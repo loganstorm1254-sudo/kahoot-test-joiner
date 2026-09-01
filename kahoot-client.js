@@ -247,6 +247,10 @@ export class KahootJoiner {
     this.liveQuizId = "";
     this.liveChoiceCounts = [];
     this.quizLookupStarted = false;
+    this.reconnectTimer = null;
+    this.reconnectAttempts = 0;
+    this.answerWatchdog = null;
+    this.sessionJoined = false;
   }
 
   applyQuizAnswers(quizAnswers) {
@@ -309,6 +313,14 @@ export class KahootJoiner {
     if (this.answerTimer) {
       clearTimeout(this.answerTimer);
       this.answerTimer = null;
+    }
+    if (this.answerWatchdog) {
+      clearTimeout(this.answerWatchdog);
+      this.answerWatchdog = null;
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
     if (this.gameEndTimer) {
       clearTimeout(this.gameEndTimer);
@@ -422,9 +434,96 @@ export class KahootJoiner {
       if (this.ws === ws) {
         this.ws = null;
       }
-      this.joined = false;
+      if (this.closed || runId !== this.runId || this.gameEndReported) {
+        if (!this.sessionJoined) {
+          this.joined = false;
+        }
+        this.readyToPlay = false;
+        return;
+      }
       this.readyToPlay = false;
+      this.status("Connection lost — reconnecting…");
+      this.scheduleReconnect(runId);
     };
+  }
+
+  scheduleReconnect(runId) {
+    if (this.closed || this.gameEndReported || this.reconnectTimer) {
+      return;
+    }
+
+    this.reconnectAttempts += 1;
+    if (this.reconnectAttempts > 6) {
+      this.onError("Connection lost — could not reconnect");
+      return;
+    }
+
+    const delay = Math.min(800 * this.reconnectAttempts, 5000);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.closed || runId !== this.runId || this.gameEndReported) {
+        return;
+      }
+
+      this.handshakeComplete = false;
+      this.loginSent = false;
+      this.subscribed = false;
+      this.clientId = null;
+
+      this.connect(runId).catch((error) => {
+        if (runId !== this.runId || this.closed || this.gameEndReported) {
+          return;
+        }
+        this.scheduleReconnect(runId);
+      });
+    }, delay);
+  }
+
+  clearAnswerTimers() {
+    if (this.answerTimer) {
+      clearTimeout(this.answerTimer);
+      this.answerTimer = null;
+    }
+    if (this.answerWatchdog) {
+      clearTimeout(this.answerWatchdog);
+      this.answerWatchdog = null;
+    }
+  }
+
+  submitAutoAnswer(runId, questionIndex, questionType, numChoices) {
+    if (this.closed || runId !== this.runId) {
+      return false;
+    }
+    if (this.lastAnsweredIndex === questionIndex) {
+      return false;
+    }
+    if (this.currentQuestionIndex !== questionIndex) {
+      return false;
+    }
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    const shared = this.getSharedQuizAnswers?.();
+    if (shared) {
+      this.applyQuizAnswers(shared);
+    }
+
+    this.lastAnsweredIndex = questionIndex;
+    const choice = this.buildSmartChoice(questionType, numChoices);
+    const mode = this.hasKnownAnswer() ? "known answer" : "guess";
+    this.status(
+      `Answering block ${questionIndex} → ${typeof choice === "number" ? `choice ${choice + 1}` : choice} (${mode})`,
+    );
+    this.sendAnswerModern(choice);
+    if (!this.usesGameBlocks) {
+      setTimeout(() => {
+        if (!this.closed && runId === this.runId) {
+          this.sendAnswerLegacy(typeof choice === "number" ? choice : 0);
+        }
+      }, 50);
+    }
+    return true;
   }
 
   nextId() {
@@ -664,7 +763,8 @@ export class KahootJoiner {
     }
 
     if (messageId === 1) {
-      this.questionActive = false;
+      // GET_READY can arrive after QUESTION_START and used to clear questionActive too early.
+      // Reveal (id 8) is the only signal that answering for this block is finished.
     }
   }
 
@@ -706,9 +806,6 @@ export class KahootJoiner {
     if (!this.autoAnswer || this.closed || !this.readyToPlay || this.twoFactorPending) {
       return;
     }
-    if (!this.questionActive) {
-      return;
-    }
     if (!isAnswerableBlockType(this.currentQuestionType)) {
       return;
     }
@@ -721,38 +818,29 @@ export class KahootJoiner {
     const numChoices = Math.max(this.currentNumChoices || 4, 1);
     const answerDelay = 30 + Math.floor(Math.random() * 90);
 
-    if (this.answerTimer) {
-      clearTimeout(this.answerTimer);
-    }
+    this.clearAnswerTimers();
 
     this.answerTimer = setTimeout(() => {
-      if (this.closed || runId !== this.runId || !this.questionActive) {
+      this.answerTimer = null;
+      if (this.closed || runId !== this.runId) {
+        return;
+      }
+      this.submitAutoAnswer(runId, questionIndex, questionType, numChoices);
+    }, answerDelay);
+
+    this.answerWatchdog = setTimeout(() => {
+      this.answerWatchdog = null;
+      if (this.closed || runId !== this.runId) {
         return;
       }
       if (this.lastAnsweredIndex === questionIndex) {
         return;
       }
-
-      const shared = this.getSharedQuizAnswers?.();
-      if (shared) {
-        this.applyQuizAnswers(shared);
+      if (this.currentQuestionIndex !== questionIndex) {
+        return;
       }
-
-      this.lastAnsweredIndex = questionIndex;
-      const choice = this.buildSmartChoice(questionType, numChoices);
-      const mode = this.hasKnownAnswer() ? "known answer" : "guess";
-      this.status(
-        `Answering block ${questionIndex} → ${typeof choice === "number" ? `choice ${choice + 1}` : choice} (${mode})`,
-      );
-      this.sendAnswerModern(choice);
-      if (!this.usesGameBlocks) {
-        setTimeout(() => {
-          if (!this.closed && runId === this.runId) {
-            this.sendAnswerLegacy(typeof choice === "number" ? choice : 0);
-          }
-        }, 50);
-      }
-    }, answerDelay);
+      this.submitAutoAnswer(runId, questionIndex, questionType, numChoices);
+    }, 2200);
   }
 
   reportGameEnd(content) {
@@ -863,11 +951,24 @@ export class KahootJoiner {
     const content = parseMessageContent(data);
 
     if (id === 14) {
-      if (!this.joined && runId === this.runId && !this.closed) {
+      if (runId === this.runId && !this.closed) {
         this.joined = true;
         this.readyToPlay = true;
-        this.status(`Joined as ${this.nickname}`);
-        this.onJoined(this.nickname);
+        this.reconnectAttempts = 0;
+        if (!this.sessionJoined) {
+          this.sessionJoined = true;
+          this.status(`Joined as ${this.nickname}`);
+          this.onJoined(this.nickname);
+        } else {
+          this.status(`Reconnected as ${this.nickname}`);
+        }
+        if (
+          this.autoAnswer &&
+          this.questionActive &&
+          this.lastAnsweredIndex !== this.currentQuestionIndex
+        ) {
+          this.scheduleAutoAnswer(runId);
+        }
       }
       this.maybeRequestQuizAnswers(content, runId);
       return;
@@ -901,6 +1002,9 @@ export class KahootJoiner {
     if (id === 52) {
       this.twoFactorPending = false;
       this.readyToPlay = true;
+      if (this.questionActive) {
+        this.scheduleAutoAnswer(runId);
+      }
       return;
     }
 
@@ -918,10 +1022,7 @@ export class KahootJoiner {
     if (id === 8) {
       this.questionActive = false;
       this.lastAnsweredIndex = -1;
-      if (this.answerTimer) {
-        clearTimeout(this.answerTimer);
-        this.answerTimer = null;
-      }
+      this.clearAnswerTimers();
       const correctChoices = extractCorrectChoices(content);
       if (Array.isArray(correctChoices) && correctChoices.length) {
         const learnedIndex = this.currentQuestionIndex;
