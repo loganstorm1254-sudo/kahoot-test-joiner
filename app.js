@@ -406,6 +406,9 @@ function buildJoinerCallbacks(activeSession, autoAnswer, nickname) {
       if (activeSession !== session || !autoAnswer) {
         return;
       }
+      if (!sharedQuizAnswers?.answers?.length) {
+        sharedQuizLoadPromise = null;
+      }
       ensureQuizAnswers(quizPin, title, choiceCounts, quizId, activeSession);
     },
     onLearnedAnswer: ({ pin: learnedPin, quizQuestionIndex, correctChoices }) => {

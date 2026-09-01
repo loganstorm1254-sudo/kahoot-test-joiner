@@ -352,6 +352,9 @@ export class KahootJoiner {
       : false;
     if (quizAnswers?.answers?.length || hasBlockAnswers) {
       this.quizAnswers = quizAnswers;
+      if (this.autoAnswer && this.questionActive && this.lastAnsweredIndex !== this.currentQuestionIndex) {
+        this.scheduleAutoAnswer(this.runId);
+      }
     }
   }
 
@@ -610,12 +613,62 @@ export class KahootJoiner {
     return true;
   }
 
+  getQuizLookupIndex() {
+    if (this.activeQuizQuestionIndex >= 0) {
+      return this.activeQuizQuestionIndex;
+    }
+    if (!this.usesGameBlocks && this.currentQuestionIndex >= 1) {
+      return this.currentQuestionIndex - 1;
+    }
+    return this.currentQuestionIndex;
+  }
+
+  getDisplayQuestionNumber() {
+    return this.getQuizLookupIndex() + 1;
+  }
+
+  getSearchLabels(entry) {
+    return (entry?.choiceLabels || []).map((label) => String(label || "").trim()).filter(Boolean);
+  }
+
+  getSearchQuestion(entry, labels) {
+    const question = String(entry?.question || "").trim();
+    if (question) {
+      return question;
+    }
+    if (labels.length >= 2) {
+      return `Which answer is correct? Options: ${labels.join(", ")}`;
+    }
+    return "";
+  }
+
+  async ensureQuizDataBeforeAnswer() {
+    const shared = this.getSharedQuizAnswers?.();
+    if (shared) {
+      this.applyQuizAnswers(shared);
+      return shared;
+    }
+
+    if (!this.waitForQuizAnswers) {
+      return this.quizAnswers;
+    }
+
+    const loaded = await Promise.race([
+      this.waitForQuizAnswers(),
+      new Promise((resolve) => {
+        setTimeout(() => resolve(null), 4500);
+      }),
+    ]);
+
+    if (loaded) {
+      this.applyQuizAnswers(loaded);
+    }
+    return loaded || this.quizAnswers;
+  }
+
   getQuestionEntry() {
     const blockIndex = this.currentQuestionIndex;
-    const quizIndex =
-      this.activeQuizQuestionIndex >= 0
-        ? this.activeQuizQuestionIndex
-        : this.currentQuestionIndex;
+    const quizIndex = this.getQuizLookupIndex();
 
     const cached =
       this.quizAnswers?.answersByBlockIndex?.[blockIndex] ||
@@ -658,8 +711,7 @@ export class KahootJoiner {
 
   canUseWebSearch() {
     const entry = this.getQuestionEntry();
-    const labels = (entry?.choiceLabels || []).filter((label) => String(label || "").trim());
-    return Boolean(entry?.question && labels.length >= 2);
+    return this.getSearchLabels(entry).length >= 2;
   }
 
   getSearchOptions() {
@@ -681,10 +733,7 @@ export class KahootJoiner {
 
   hasLearnedAnswer() {
     const blockIndex = this.currentQuestionIndex;
-    const quizIndex =
-      this.activeQuizQuestionIndex >= 0
-        ? this.activeQuizQuestionIndex
-        : this.currentQuestionIndex;
+    const quizIndex = this.getQuizLookupIndex();
     return Boolean(
       getLearnedCorrectIndices(this.pin, blockIndex)?.length ||
         getLearnedCorrectIndices(this.pin, quizIndex)?.length,
@@ -693,13 +742,15 @@ export class KahootJoiner {
 
   prefetchSearchForCurrentQuestion() {
     const entry = this.getQuestionEntry();
-    if (!entry?.question || entry.choiceLabels.length < 2 || this.hasLearnedAnswer()) {
+    const labels = this.getSearchLabels(entry);
+    const searchQuestion = this.getSearchQuestion(entry, labels);
+    if (!searchQuestion || labels.length < 2 || this.hasLearnedAnswer()) {
       return;
     }
     if (this.hasTrustedPrefetchAnswer()) {
       return;
     }
-    prefetchSearchAnswer(entry.question, entry.choiceLabels, this.getSearchOptions());
+    prefetchSearchAnswer(searchQuestion, entry.choiceLabels || labels, this.getSearchOptions());
   }
 
   formatSearchDetail(searchResult) {
@@ -718,24 +769,30 @@ export class KahootJoiner {
   }
 
   async buildAndSendAnswer(runId, questionIndex, questionType, numChoices) {
+    await this.ensureQuizDataBeforeAnswer();
+
     const shared = this.getSharedQuizAnswers?.();
     if (shared) {
       this.applyQuizAnswers(shared);
     }
 
     const entry = this.getQuestionEntry();
-    if (entry?.question && !this.hasLearnedAnswer() && this.canUseWebSearch()) {
+    const labels = this.getSearchLabels(entry);
+    const searchQuestion = this.getSearchQuestion(entry, labels);
+    if (searchQuestion && !this.hasLearnedAnswer() && !this.hasKnownAnswer() && labels.length >= 2) {
       const preview =
-        entry.question.length > 72 ? `${entry.question.slice(0, 69)}...` : entry.question;
-      const imageUrl = entry.imageUrl || entry.choiceImages?.[0];
-      const choiceImageCount = entry.choiceImages?.length || 0;
+        searchQuestion.length > 72 ? `${searchQuestion.slice(0, 69)}...` : searchQuestion;
+      const imageUrl = entry?.imageUrl || entry?.choiceImages?.[0];
+      const choiceImageCount = (entry?.choiceImages || []).filter(Boolean).length;
       if (imageUrl || choiceImageCount) {
         this.status(
-          `Looking up image Q${this.currentQuestionIndex + 1}: "${preview}" (${choiceImageCount || 1} image${choiceImageCount === 1 ? "" : "s"})`,
+          `Looking up image Q${this.getDisplayQuestionNumber()}: "${preview}" (${choiceImageCount || 1} image${choiceImageCount === 1 ? "" : "s"})`,
         );
       } else {
-        this.status(`Googling Q${this.currentQuestionIndex + 1}: "${preview}"`);
+        this.status(`Googling Q${this.getDisplayQuestionNumber()}: "${preview}"`);
       }
+    } else if (!entry && !this.hasKnownAnswer()) {
+      this.status(`Q${this.getDisplayQuestionNumber()}: waiting for quiz data…`);
     }
 
     const { choice, mode, detail } = await this.buildSmartChoice(questionType, numChoices);
@@ -755,7 +812,7 @@ export class KahootJoiner {
     this.lastAnsweredIndex = questionIndex;
     const suffix = detail ? ` — ${detail}` : "";
     this.status(
-      `Answering block ${questionIndex} → ${typeof choice === "number" ? `choice ${choice + 1}` : choice} (${mode}${suffix})`,
+      `Answering Q${this.getDisplayQuestionNumber()} → ${typeof choice === "number" ? `choice ${choice + 1}` : choice} (${mode}${suffix})`,
     );
     this.sendAnswerModern(choice);
     if (!this.usesGameBlocks) {
@@ -768,12 +825,12 @@ export class KahootJoiner {
   }
 
   async buildSmartChoice(type, numChoices) {
-    const quizIndex =
-      this.activeQuizQuestionIndex >= 0
-        ? this.activeQuizQuestionIndex
-        : this.currentQuestionIndex;
+    const quizIndex = this.getQuizLookupIndex();
     const blockIndex = this.currentQuestionIndex;
     const entry = this.getQuestionEntry();
+    const labels = this.getSearchLabels(entry);
+    const searchQuestion = this.getSearchQuestion(entry, labels);
+    const searchOptions = this.getSearchOptions();
 
     if (this.hasLearnedAnswer()) {
       return {
@@ -804,16 +861,16 @@ export class KahootJoiner {
     }
 
     if (type === "open_ended" || type === "word_cloud") {
-      if (entry?.question) {
+      if (searchQuestion) {
         const search = await lookupSearchAnswer(
-          entry.question,
-          entry.choiceLabels || [],
-          this.getSearchOptions(),
+          searchQuestion,
+          entry?.choiceLabels || labels,
+          searchOptions,
         );
         if (search?.textAnswer) {
           return {
             choice: search.textAnswer,
-            mode: "google",
+            mode: search.source === "vision" ? "vision" : "google",
             detail: this.formatSearchDetail(search),
           };
         }
@@ -824,32 +881,48 @@ export class KahootJoiner {
         return { choice: textAnswers[Math.floor(Math.random() * textAnswers.length)], mode: "known answer" };
       }
 
+      if (this.hasKnownAnswer()) {
+        return {
+          choice: resolveChoice(type, numChoices, quizIndex, this.quizAnswers, this.pin, blockIndex),
+          mode: "quiz cache",
+        };
+      }
+
       return {
         choice: ["idk", "hello", "yes", "ok", "maybe", "hmm", "lol", "hi"][
           Math.floor(Math.random() * 8)
         ],
         mode: "guess",
+        detail: searchQuestion ? "search failed" : "no question data",
       };
     }
 
-    if (entry?.question && entry?.choiceLabels?.length >= 2) {
+    if (searchQuestion && labels.length >= 2) {
       const search = await lookupSearchAnswer(
-        entry.question,
-        entry.choiceLabels,
-        this.getSearchOptions(),
+        searchQuestion,
+        entry?.choiceLabels || labels,
+        searchOptions,
       );
       if (search?.choiceIndex != null && search.choiceIndex >= 0 && search.choiceIndex < numChoices) {
         return {
           choice: search.choiceIndex,
-          mode: "google",
+          mode: search.source === "vision" ? "vision" : "google",
           detail: this.formatSearchDetail(search),
         };
       }
     }
 
+    if (this.hasKnownAnswer()) {
+      return {
+        choice: resolveChoice(type, numChoices, quizIndex, this.quizAnswers, this.pin, blockIndex),
+        mode: "quiz cache",
+      };
+    }
+
     return {
       choice: resolveChoice(type, numChoices, quizIndex, this.quizAnswers, this.pin, blockIndex),
       mode: "guess",
+      detail: searchQuestion ? "search failed" : "no quiz data",
     };
   }
 
@@ -985,10 +1058,7 @@ export class KahootJoiner {
 
   hasKnownAnswer() {
     const blockIndex = this.currentQuestionIndex;
-    const quizIndex =
-      this.activeQuizQuestionIndex >= 0
-        ? this.activeQuizQuestionIndex
-        : this.currentQuestionIndex;
+    const quizIndex = this.getQuizLookupIndex();
     const blockAnswer = this.quizAnswers?.answersByBlockIndex?.[blockIndex];
     const compactAnswer = this.quizAnswers?.answers?.[quizIndex];
     return Boolean(
@@ -1030,9 +1100,13 @@ export class KahootJoiner {
       this.usesGameBlocks = true;
       this.currentQuestionIndex = content.gameBlockIndex;
     } else if (content.questionIndex != null) {
-      this.currentQuestionIndex = content.questionIndex;
+      const rawIndex = Number(content.questionIndex);
+      this.currentQuestionIndex =
+        Number.isFinite(rawIndex) && rawIndex >= 1 ? rawIndex - 1 : rawIndex;
     } else if (content.questionNumber != null) {
-      this.currentQuestionIndex = content.questionNumber;
+      const rawNumber = Number(content.questionNumber);
+      this.currentQuestionIndex =
+        Number.isFinite(rawNumber) && rawNumber >= 1 ? rawNumber - 1 : rawNumber;
     }
 
     const blockType = content.type || content.gameBlockType || content.quizType || "";
@@ -1040,7 +1114,8 @@ export class KahootJoiner {
       this.currentQuestionType = normalizeQuestionType(blockType);
     }
 
-    if (messageId === 1 && isAnswerableBlockType(blockType || this.currentQuestionType)) {
+    const answerableNow = isAnswerableBlockType(blockType || this.currentQuestionType);
+    if ((messageId === 1 || messageId === 2 || messageId === 43) && answerableNow) {
       if (!this.blockToQuizIndex.has(this.currentQuestionIndex)) {
         this.blockToQuizIndex.set(this.currentQuestionIndex, this.nextQuizQuestionIndex);
         this.nextQuizQuestionIndex += 1;
@@ -1051,6 +1126,10 @@ export class KahootJoiner {
     if (messageId === 2 || messageId === 43) {
       if (this.blockToQuizIndex.has(this.currentQuestionIndex)) {
         this.activeQuizQuestionIndex = this.blockToQuizIndex.get(this.currentQuestionIndex);
+      } else if (answerableNow) {
+        this.blockToQuizIndex.set(this.currentQuestionIndex, this.nextQuizQuestionIndex);
+        this.activeQuizQuestionIndex = this.nextQuizQuestionIndex;
+        this.nextQuizQuestionIndex += 1;
       }
     }
 
@@ -1132,14 +1211,17 @@ export class KahootJoiner {
     const questionType = this.currentQuestionType;
     const numChoices = Math.max(this.currentNumChoices || 4, 1);
     const searchOptions = this.getSearchOptions();
-    const hasImages = Boolean(searchOptions.imageUrl || searchOptions.choiceImages?.length);
-    const answerDelay = this.hasLearnedAnswer() || this.hasTrustedPrefetchAnswer()
+    const hasImages = Boolean(searchOptions.imageUrl || searchOptions.choiceImages?.some(Boolean));
+    const needsData = !this.hasLearnedAnswer() && !this.hasKnownAnswer() && !this.canUseWebSearch();
+    const answerDelay = this.hasLearnedAnswer() || this.hasTrustedPrefetchAnswer() || this.hasKnownAnswer()
       ? 30 + Math.floor(Math.random() * 90)
       : this.canUseWebSearch()
         ? hasImages
           ? 6200 + Math.floor(Math.random() * 2200)
           : 3600 + Math.floor(Math.random() * 1400)
-        : 30 + Math.floor(Math.random() * 90);
+        : needsData
+          ? 1800 + Math.floor(Math.random() * 1200)
+          : 30 + Math.floor(Math.random() * 90);
 
     this.clearAnswerTimers();
 

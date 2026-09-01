@@ -197,9 +197,12 @@ export function lookupSearchAnswer(
 ) {
   const labels = (choices || []).map((choice) => String(choice || "").trim());
   const validLabels = labels.filter(Boolean);
-  if (!String(question || "").trim() || validLabels.length < 2) {
+  if (validLabels.length < 2) {
     return Promise.resolve(null);
   }
+
+  const searchQuestion =
+    String(question || "").trim() || `Which answer is correct? Options: ${validLabels.join(", ")}`;
 
   const normalizedImageUrl = String(imageUrl || "").trim();
   const normalizedChoiceImages = (choiceImages || [])
@@ -214,7 +217,7 @@ export function lookupSearchAnswer(
   }
 
   const params = new URLSearchParams({
-    question: String(question).trim(),
+    question: searchQuestion,
     choices: JSON.stringify(labels),
   });
   if (normalizedImageUrl) {
@@ -238,7 +241,7 @@ export function lookupSearchAnswer(
         const margin = Number(data?.margin) || 0;
         const source = data?.source || "google";
         const minMargin =
-          source === "vision" ? 12 : hasImages ? 4 : 6;
+          source === "vision" ? 10 : hasImages ? 3 : 5;
 
         if (
           !Number.isFinite(choiceIndex) ||
