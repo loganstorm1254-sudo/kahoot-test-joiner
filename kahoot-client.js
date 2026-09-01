@@ -1,3 +1,5 @@
+import { rememberCorrectChoices, resolveChoice } from "./quiz-answers.js";
+
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -142,6 +144,11 @@ function normalizeQuestionType(type) {
   return value;
 }
 
+function isAnswerableBlockType(type) {
+  const value = String(type || "").toLowerCase();
+  return value && value !== "content";
+}
+
 export class KahootJoiner {
   constructor() {
     this.reset();
@@ -176,19 +183,24 @@ export class KahootJoiner {
     this.questionActive = false;
     this.twoFactorPending = false;
     this.usesGameBlocks = false;
+    this.quizAnswers = null;
+    this.blockToQuizIndex = new Map();
+    this.nextQuizQuestionIndex = 0;
+    this.activeQuizQuestionIndex = -1;
   }
 
   status(message) {
     this.onStatus(message);
   }
 
-  start({ pin, nickname, autoAnswer, onJoined, onError, onStatus }) {
+  start({ pin, nickname, autoAnswer, onJoined, onError, onStatus, quizAnswers }) {
     this.stop(false);
     this.reset();
 
     this.pin = pin.trim();
     this.nickname = nickname.trim() || "test";
     this.autoAnswer = Boolean(autoAnswer);
+    this.quizAnswers = quizAnswers || null;
     this.onJoined = onJoined || (() => {});
     this.onError = onError || (() => {});
     this.onStatus = onStatus || (() => {});
@@ -454,20 +466,31 @@ export class KahootJoiner {
     this.sendControllerMessage(50, JSON.stringify({ sequence }));
   }
 
-  buildRandomChoice(type, numChoices) {
-    if (type === "jumble") {
-      return shuffle([0, 1, 2, 3]);
-    }
-    if (type === "multiple_select_quiz" || type === "multiple_select_poll") {
-      const pickCount = 1 + Math.floor(Math.random() * Math.min(numChoices, 4));
-      return shuffle([...Array(numChoices).keys()]).slice(0, pickCount).sort((a, b) => a - b);
-    }
+  buildSmartChoice(type, numChoices) {
+    const quizIndex =
+      this.activeQuizQuestionIndex >= 0
+        ? this.activeQuizQuestionIndex
+        : this.currentQuestionIndex;
+
     if (type === "open_ended" || type === "word_cloud") {
+      const textAnswers = this.quizAnswers?.answers?.[quizIndex]?.textAnswers;
+      if (Array.isArray(textAnswers) && textAnswers.length > 0) {
+        return textAnswers[Math.floor(Math.random() * textAnswers.length)];
+      }
       return ["test", "idk", "hello", "yes", "ok", "maybe", "hmm", "lol"][
         Math.floor(Math.random() * 8)
       ];
     }
-    return Math.floor(Math.random() * Math.max(numChoices, 1));
+
+    return resolveChoice(type, numChoices, quizIndex, this.quizAnswers, this.pin);
+  }
+
+  hasKnownAnswer() {
+    const quizIndex =
+      this.activeQuizQuestionIndex >= 0
+        ? this.activeQuizQuestionIndex
+        : this.currentQuestionIndex;
+    return Boolean(this.quizAnswers?.answers?.[quizIndex]?.correctIndices?.length);
   }
 
   parseChoiceCount(content, questionType, questionIndex) {
@@ -507,6 +530,20 @@ export class KahootJoiner {
     const blockType = content.type || content.gameBlockType || content.quizType || "";
     if (blockType) {
       this.currentQuestionType = normalizeQuestionType(blockType);
+    }
+
+    if (messageId === 1 && isAnswerableBlockType(blockType || this.currentQuestionType)) {
+      if (!this.blockToQuizIndex.has(this.currentQuestionIndex)) {
+        this.blockToQuizIndex.set(this.currentQuestionIndex, this.nextQuizQuestionIndex);
+        this.nextQuizQuestionIndex += 1;
+      }
+      this.activeQuizQuestionIndex = this.blockToQuizIndex.get(this.currentQuestionIndex);
+    }
+
+    if (messageId === 2 || messageId === 43) {
+      if (this.blockToQuizIndex.has(this.currentQuestionIndex)) {
+        this.activeQuizQuestionIndex = this.blockToQuizIndex.get(this.currentQuestionIndex);
+      }
     }
 
     const choiceCount = this.parseChoiceCount(
@@ -567,10 +604,10 @@ export class KahootJoiner {
     }
 
     const questionIndex = this.currentQuestionIndex;
-    const choice = this.buildRandomChoice(this.currentQuestionType, this.currentNumChoices);
+    const choice = this.buildSmartChoice(this.currentQuestionType, this.currentNumChoices);
     const sinceStart = Date.now() - (this.questionStartTime || 0);
-    const minWait = Math.max(250 - sinceStart, 0);
-    const answerDelay = minWait + 400 + Math.floor(Math.random() * 1400);
+    const minWait = Math.max(200 - sinceStart, 0);
+    const answerDelay = minWait + 80 + Math.floor(Math.random() * 320);
 
     if (this.answerTimer) {
       clearTimeout(this.answerTimer);
@@ -582,7 +619,10 @@ export class KahootJoiner {
           return;
         }
         this.lastAnsweredIndex = questionIndex;
-        this.status(`Answering block ${questionIndex} → choice ${typeof choice === "number" ? choice + 1 : choice}`);
+        const mode = this.hasKnownAnswer() ? "known answer" : "guess";
+        this.status(
+          `Answering block ${questionIndex} → ${typeof choice === "number" ? `choice ${choice + 1}` : choice} (${mode})`,
+        );
         this.sendAnswerModern(choice);
         if (!this.usesGameBlocks) {
           setTimeout(() => {
@@ -636,6 +676,17 @@ export class KahootJoiner {
       if (this.answerTimer) {
         clearTimeout(this.answerTimer);
         this.answerTimer = null;
+      }
+      if (contentStr) {
+        try {
+          const endContent = JSON.parse(contentStr);
+          const correctChoices = endContent.correctChoices || endContent.correctAnswers;
+          if (this.activeQuizQuestionIndex >= 0) {
+            rememberCorrectChoices(this.pin, this.activeQuizQuestionIndex, correctChoices);
+          }
+        } catch {
+          // ignore
+        }
       }
       return;
     }

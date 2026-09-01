@@ -1,5 +1,6 @@
 import { KahootJoiner } from "./kahoot-client.js";
 import { generateRandomName, generateUniqueNames } from "./name-generator.js";
+import { clearLearnedAnswers, fetchQuizAnswers } from "./quiz-answers.js";
 
 const pinInput = document.getElementById("pin");
 const nameInput = document.getElementById("name");
@@ -81,6 +82,20 @@ function buildNicknames(count, baseName, useRandomNames) {
 
 async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
   const delay = nicknames.length > 20 ? 150 : 700;
+  let quizAnswers = null;
+
+  if (autoAnswer) {
+    setStatus("Loading quiz answers…");
+    quizAnswers = await fetchQuizAnswers(pin);
+    if (activeSession !== session) {
+      return;
+    }
+    if (quizAnswers?.answers?.length) {
+      setStatus(`Loaded ${quizAnswers.answers.length} answers — joining ${nicknames.length} players…`);
+    } else {
+      setStatus(`Quiz answers unavailable — joining ${nicknames.length} players (random guesses)…`);
+    }
+  }
 
   for (let index = 0; index < nicknames.length; index += 1) {
     if (activeSession !== session) {
@@ -95,6 +110,7 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
       pin,
       nickname,
       autoAnswer,
+      quizAnswers,
       onJoined: () => {
         clearTimeout(joinTimeout);
         if (activeSession !== session) {
@@ -166,6 +182,7 @@ function onJoin() {
   failedCount = 0;
   lastError = "";
   joiners = [];
+  clearLearnedAnswers(pin.replace(/\s+/g, ""));
 
   const nicknames = buildNicknames(count, baseName || "test", useRandomNames);
 
