@@ -1,1 +1,1 @@
-export const CLIENT_BUILD = "google-search-v10";
+export const CLIENT_BUILD = "pin-search-v11";

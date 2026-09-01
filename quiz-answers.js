@@ -6,7 +6,18 @@ const searchCache = new Map();
 const searchInflight = new Map();
 
 export function normalizePin(pin) {
-  return String(pin || "").replace(/\s+/g, "");
+  return String(pin || "").replace(/\D/g, "");
+}
+
+export function formatPinForDisplay(pin) {
+  const digits = normalizePin(pin);
+  if (digits.length <= 3) {
+    return digits;
+  }
+  if (digits.length <= 6) {
+    return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+  }
+  return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
 }
 
 export function isValidPin(pin) {
@@ -178,7 +189,7 @@ export function prefetchSearchAnswer(question, choices) {
   return lookupSearchAnswer(question, choices, { timeoutMs: 6000 });
 }
 
-export function lookupSearchAnswer(question, choices, { timeoutMs = 3500 } = {}) {
+export function lookupSearchAnswer(question, choices, { timeoutMs = 4000 } = {}) {
   const labels = (choices || []).map((choice) => String(choice || "").trim()).filter(Boolean);
   if (!String(question || "").trim() || labels.length < 2) {
     return Promise.resolve(null);
@@ -202,11 +213,18 @@ export function lookupSearchAnswer(question, choices, { timeoutMs = 3500 } = {})
       .then((response) => response.json().catch(() => ({})))
       .then((data) => {
         const choiceIndex = Number(data?.choiceIndex);
-        if (!Number.isFinite(choiceIndex) || choiceIndex < 0 || choiceIndex >= labels.length) {
+        const margin = Number(data?.margin) || 0;
+        if (
+          !Number.isFinite(choiceIndex) ||
+          choiceIndex < 0 ||
+          choiceIndex >= labels.length ||
+          margin < 8
+        ) {
           return {
             choiceIndex: null,
             textAnswer: null,
             confidence: Number(data?.confidence) || 0,
+            margin,
             source: data?.source || "google",
             queries: Array.isArray(data?.queries) ? data.queries : [],
             snippetCount: Number(data?.snippetCount) || 0,
@@ -216,6 +234,7 @@ export function lookupSearchAnswer(question, choices, { timeoutMs = 3500 } = {})
           choiceIndex,
           textAnswer: data?.textAnswer || labels[choiceIndex],
           confidence: Number(data?.confidence) || 0,
+          margin,
           source: data?.source || "google",
           queries: Array.isArray(data?.queries) ? data.queries : [],
           snippetCount: Number(data?.snippetCount) || 0,
@@ -236,6 +255,25 @@ export function lookupSearchAnswer(question, choices, { timeoutMs = 3500 } = {})
 
   searchInflight.set(cacheKey, promise);
   return promise;
+}
+
+export function isTrustedQuizAnswers(quizData, { liveQuizId = "", liveQuizTitle = "" } = {}) {
+  if (!quizData?.answers?.length && !quizData?.answersByBlockIndex?.length) {
+    return false;
+  }
+  if (quizData.source === "uuid" || quizData.source === "pin") {
+    return true;
+  }
+  if (quizData.quizId && liveQuizId && String(quizData.quizId) === String(liveQuizId)) {
+    return true;
+  }
+  if ((quizData.matchScore || 0) >= 0.85) {
+    return true;
+  }
+  if (quizData.title && liveQuizTitle) {
+    return normalizeTitle(quizData.title) === normalizeTitle(liveQuizTitle);
+  }
+  return false;
 }
 
 export function resolveChoice(type, numChoices, quizQuestionIndex, quizData, pin, blockIndex) {

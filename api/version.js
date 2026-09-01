@@ -21,7 +21,7 @@ export async function GET() {
       fullSha: sha,
       label: `build ${shortSha}`,
       deployedAt,
-      features: ["google-search-v10", "reliable-answer-v7", "version-checker"],
+      features: ["pin-search-v11", "google-search-v10", "version-checker"],
     },
     { headers: corsHeaders() },
   );

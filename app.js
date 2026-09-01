@@ -4,6 +4,7 @@ import {
   clearLearnedAnswers,
   clearQuizCache,
   fetchQuizByTitle,
+  formatPinForDisplay,
   getCachedQuizAnswers,
   isValidPin,
   normalizePin,
@@ -406,7 +407,7 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
         }
         if (
           targetCount === 1 ||
-          /Smart mode|Looking up|known answer|google|Googled|learn answers|Private quiz/i.test(message)
+          /Smart mode|Looking up|known answer|quiz answers|google|Googled|learn answers|Private quiz/i.test(message)
         ) {
           setImportantStatus(message);
         }
@@ -467,7 +468,7 @@ function onJoin() {
     return;
   }
 
-  const pin = pinInput.value.trim();
+  const pin = normalizePin(pinInput.value);
   const baseName = nameInput.value.trim();
   const count = getPlayerCount();
   const useRandomNames = randomNamesCheck.checked;
@@ -533,6 +534,10 @@ function onRandomNamesToggle() {
 function onPinInput() {
   if (connected) {
     return;
+  }
+  const formatted = formatPinForDisplay(pinInput.value);
+  if (formatted !== pinInput.value) {
+    pinInput.value = formatted;
   }
   schedulePrefetch(pinInput.value);
 }

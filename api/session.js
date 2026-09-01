@@ -15,7 +15,7 @@ export async function OPTIONS() {
 
 export async function GET(request) {
   const url = new URL(request.url);
-  const pin = url.searchParams.get("pin");
+  const pin = String(url.searchParams.get("pin") || "").replace(/\D/g, "");
 
   if (!pin || !/^\d{6,}$/.test(pin)) {
     return Response.json({ error: "Invalid PIN" }, { status: 400, headers: corsHeaders() });

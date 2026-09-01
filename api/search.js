@@ -526,11 +526,15 @@ async function resolveFromGoogle(question, choices) {
     }
   }
 
-  if (bestIndex < 0 || bestScore < 5) {
+  const sortedScores = [...scores].sort((left, right) => right - left);
+  const margin = sortedScores[0] - (sortedScores[1] || 0);
+
+  if (bestIndex < 0 || bestScore < 8 || margin < 8) {
     return {
       choiceIndex: null,
       textAnswer: null,
       confidence: bestScore,
+      margin,
       source: snippetCount > 0 ? "low-confidence" : "no-results",
       queries,
       snippetCount,
@@ -547,6 +551,7 @@ async function resolveFromGoogle(question, choices) {
     choiceIndex: bestIndex,
     textAnswer: choices[bestIndex],
     confidence: bestScore,
+    margin,
     source,
     queries,
     snippetCount,

@@ -1,6 +1,8 @@
 import {
   getLearnedCorrectIndices,
+  isTrustedQuizAnswers,
   lookupSearchAnswer,
+  normalizePin,
   prefetchSearchAnswer,
   rememberCorrectChoices,
   resolveChoice,
@@ -290,7 +292,7 @@ export class KahootJoiner {
     this.stop(false);
     this.reset();
 
-    this.pin = pin.trim();
+    this.pin = normalizePin(pin);
     this.nickname = nickname.trim() || "bot.locker-rover.dev";
     this.autoAnswer = Boolean(autoAnswer);
     this.quizAnswers = quizAnswers || null;
@@ -536,6 +538,16 @@ export class KahootJoiner {
     );
   }
 
+  hasTrustedPrefetchAnswer() {
+    if (!this.hasKnownAnswer()) {
+      return false;
+    }
+    return isTrustedQuizAnswers(this.quizAnswers, {
+      liveQuizId: this.liveQuizId,
+      liveQuizTitle: this.liveQuizTitle,
+    });
+  }
+
   canUseWebSearch() {
     const entry = this.getQuestionEntry();
     return Boolean(entry?.question && entry?.choiceLabels?.length >= 2);
@@ -556,6 +568,9 @@ export class KahootJoiner {
   prefetchSearchForCurrentQuestion() {
     const entry = this.getQuestionEntry();
     if (!entry?.question || entry.choiceLabels.length < 2 || this.hasLearnedAnswer()) {
+      return;
+    }
+    if (this.hasTrustedPrefetchAnswer()) {
       return;
     }
     prefetchSearchAnswer(entry.question, entry.choiceLabels);
@@ -632,6 +647,20 @@ export class KahootJoiner {
           blockIndex,
         ),
         mode: "learned",
+      };
+    }
+
+    if (this.hasTrustedPrefetchAnswer()) {
+      return {
+        choice: resolveChoice(
+          type,
+          numChoices,
+          quizIndex,
+          this.quizAnswers,
+          this.pin,
+          blockIndex,
+        ),
+        mode: "quiz answers",
       };
     }
 
@@ -955,10 +984,10 @@ export class KahootJoiner {
     const questionIndex = this.currentQuestionIndex;
     const questionType = this.currentQuestionType;
     const numChoices = Math.max(this.currentNumChoices || 4, 1);
-    const answerDelay = this.hasLearnedAnswer()
+    const answerDelay = this.hasLearnedAnswer() || this.hasTrustedPrefetchAnswer()
       ? 30 + Math.floor(Math.random() * 90)
       : this.canUseWebSearch()
-        ? 1200 + Math.floor(Math.random() * 800)
+        ? 1400 + Math.floor(Math.random() * 900)
         : 30 + Math.floor(Math.random() * 90);
 
     this.clearAnswerTimers();
