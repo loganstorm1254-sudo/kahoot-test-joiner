@@ -3,8 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="color-scheme" content="light" />
     <title>Joiner</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #fff !important;
+        color: #1d1d1f !important;
+      }
+    </style>
+    <link rel="stylesheet" href="/styles.css?v=apple-store-v15" />
   </head>
   <body>
     <div class="store-shell">
@@ -131,26 +141,32 @@
 
           <div class="product-grid">
             <article class="product-tile">
+              <div class="tile-visual" aria-hidden="true"></div>
               <h2 class="tile-title">Batch join</h2>
               <p class="tile-copy">Add up to 100 players with staggered connections so the host stays stable.</p>
             </article>
             <article class="product-tile">
+              <div class="tile-visual" aria-hidden="true"></div>
               <h2 class="tile-title">Auto-answer</h2>
               <p class="tile-copy">Bots answer instantly when the key is known, or after a quick web search.</p>
             </article>
             <article class="product-tile">
+              <div class="tile-visual" aria-hidden="true"></div>
               <h2 class="tile-title">Smart lookup</h2>
               <p class="tile-copy">Public quizzes match by title and layout. Private games learn after each reveal.</p>
             </article>
             <article class="product-tile">
+              <div class="tile-visual" aria-hidden="true"></div>
               <h2 class="tile-title">Spaced PINs</h2>
               <p class="tile-copy">Type naturally — like <strong>123 456</strong>. Formatting is handled for you.</p>
             </article>
             <article class="product-tile">
+              <div class="tile-visual" aria-hidden="true"></div>
               <h2 class="tile-title">Stay connected</h2>
               <p class="tile-copy">Dropped connections retry automatically and resume answering when possible.</p>
             </article>
             <article class="product-tile">
+              <div class="tile-visual" aria-hidden="true"></div>
               <h2 class="tile-title">End-of-game stats</h2>
               <p class="tile-copy">See ranks, scores, and which bot finished on top when the quiz ends.</p>
             </article>
@@ -223,6 +239,6 @@
       </footer>
     </div>
 
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/app.js?v=apple-store-v15"></script>
   </body>
 </html>

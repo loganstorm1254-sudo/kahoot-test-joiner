@@ -21,7 +21,7 @@ export async function GET() {
       fullSha: sha,
       label: `build ${shortSha}`,
       deployedAt,
-      features: ["apple-store-v14", "apple-exact-v13", "version-checker"],
+      features: ["apple-store-v15", "apple-store-v14", "version-checker"],
     },
     { headers: corsHeaders() },
   );
