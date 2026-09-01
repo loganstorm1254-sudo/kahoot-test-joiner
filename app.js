@@ -853,9 +853,21 @@ async function onDecoySubmit(event) {
   }
 }
 
+function openJoinerView() {
+  setView(true);
+}
+
 function initShell() {
   setView(false);
   document.addEventListener("keydown", handleQuickExitKey);
+
+  const makeNavButton = document.getElementById("open-joiner");
+  if (makeNavButton) {
+    makeNavButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      openJoinerView();
+    });
+  }
 
   if (decoyForm) {
     decoyForm.addEventListener("submit", onDecoySubmit);
