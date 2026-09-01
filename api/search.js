@@ -435,7 +435,7 @@ function isBlockedCorpus(corpus) {
   );
 }
 
-function accumulateChoiceScores(choices, result, scores, focusedIndex = -1) {
+function accumulateChoiceScores(choices, result, scores, weight = 1, onlyIndex = -1) {
   if (!result) {
     return;
   }
@@ -446,12 +446,11 @@ function accumulateChoiceScores(choices, result, scores, focusedIndex = -1) {
   }
 
   const normalizedCorpus = corpus.toLowerCase();
-  for (let index = 0; index < choices.length; index += 1) {
-    let score = scoreChoice(choices[index], normalizedCorpus, result.titles);
-    if (index === focusedIndex) {
-      score += 16;
-    }
-    scores[index] += score;
+  const indices = onlyIndex >= 0 ? [onlyIndex] : choices.map((_, index) => index);
+
+  for (const index of indices) {
+    const score = scoreChoice(choices[index], normalizedCorpus, result.titles);
+    scores[index] += score * weight;
   }
 }
 
@@ -496,11 +495,11 @@ async function resolveFromGoogle(question, choices) {
   if (main) {
     usedSources.add(main.source);
     snippetCount += main.snippets.length;
-    accumulateChoiceScores(choices, main, scores);
+    accumulateChoiceScores(choices, main, scores, 2.5);
   }
 
   for (let index = 0; index < choices.length; index += 1) {
-    const query = `${normalizedQuestion} ${choices[index]}`;
+    const query = `${normalizedQuestion} "${choices[index]}"`;
     queries.push(query);
     const result = await runGoogleQuery(query);
     if (!result) {
@@ -508,12 +507,12 @@ async function resolveFromGoogle(question, choices) {
     }
     usedSources.add(result.source);
     snippetCount += result.snippets.length;
-    accumulateChoiceScores(choices, result, scores, index);
+    accumulateChoiceScores(choices, result, scores, 1.2, index);
 
     const best = Math.max(...scores);
     const sorted = [...scores].sort((left, right) => right - left);
     const second = sorted[1] || 0;
-    if (best >= 28 && best - second >= 12) {
+    if (best >= 40 && best - second >= 15) {
       break;
     }
   }
