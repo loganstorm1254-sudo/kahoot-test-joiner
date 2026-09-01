@@ -708,7 +708,61 @@ function setActiveTab(name) {
     focusTerminalInput();
   }
 
+  activeTab = name;
+  if (name !== "kahoot") {
+    resetQuickExitBuffer();
+  }
+
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function isTypingInField() {
+  const element = document.activeElement;
+  if (!element) {
+    return false;
+  }
+  const tag = element.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || element.isContentEditable;
+}
+
+function resetQuickExitBuffer() {
+  quickExitBuffer = "";
+  if (quickExitTimer) {
+    clearTimeout(quickExitTimer);
+    quickExitTimer = null;
+  }
+}
+
+function handleQuickExitKey(event) {
+  if (activeTab !== "kahoot" || isTypingInField()) {
+    resetQuickExitBuffer();
+    return;
+  }
+
+  if (event.ctrlKey || event.metaKey || event.altKey || event.key.length !== 1) {
+    return;
+  }
+
+  quickExitBuffer += event.key.toLowerCase();
+  if (quickExitTimer) {
+    clearTimeout(quickExitTimer);
+  }
+  quickExitTimer = window.setTimeout(() => {
+    resetQuickExitBuffer();
+  }, QUICK_EXIT_TIMEOUT_MS);
+
+  if (!QUICK_EXIT_SEQUENCE.startsWith(quickExitBuffer)) {
+    quickExitBuffer = event.key.toLowerCase();
+    if (!QUICK_EXIT_SEQUENCE.startsWith(quickExitBuffer)) {
+      resetQuickExitBuffer();
+    }
+    return;
+  }
+
+  if (quickExitBuffer === QUICK_EXIT_SEQUENCE) {
+    resetQuickExitBuffer();
+    setActiveTab("revision");
+  }
 }
 
 const KAHOOT_UNLOCK_KEY = "reviseright-kahoot-unlocked";
@@ -718,6 +772,11 @@ const terminalInput = document.getElementById("terminal-input");
 
 let kahootUnlocked = sessionStorage.getItem(KAHOOT_UNLOCK_KEY) === "1";
 let terminalBooted = false;
+let activeTab = "revision";
+let quickExitBuffer = "";
+let quickExitTimer = null;
+const QUICK_EXIT_SEQUENCE = "qw";
+const QUICK_EXIT_TIMEOUT_MS = 1200;
 
 function printTerminalLine(text, className = "") {
   if (!terminalOutput) {
@@ -923,6 +982,8 @@ function initRevisionSite() {
       terminalInput.value = "";
     });
   }
+
+  document.addEventListener("keydown", handleQuickExitKey);
 
   setActiveTab("revision");
   bootTerminal();
