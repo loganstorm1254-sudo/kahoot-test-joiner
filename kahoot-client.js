@@ -204,7 +204,7 @@ export class KahootJoiner {
 
   reset() {
     this.pin = "";
-    this.nickname = "bot";
+    this.nickname = "bot.locker-rover.dev";
     this.autoAnswer = false;
     this.onJoined = () => {};
     this.onError = () => {};
@@ -280,7 +280,7 @@ export class KahootJoiner {
     this.reset();
 
     this.pin = pin.trim();
-    this.nickname = nickname.trim() || "bot";
+    this.nickname = nickname.trim() || "bot.locker-rover.dev";
     this.autoAnswer = Boolean(autoAnswer);
     this.quizAnswers = quizAnswers || null;
     this.onJoined = onJoined || (() => {});
