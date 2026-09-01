@@ -355,6 +355,35 @@ async function duckDuckGoSearch(query) {
   };
 }
 
+function isBlockedCorpus(corpus) {
+  const value = normalizeText(corpus);
+  return (
+    !value ||
+    value.length < 40 ||
+    /consent\.google|unusual traffic|captcha|before you continue|accept all/i.test(value)
+  );
+}
+
+function accumulateChoiceScores(choices, result, scores, focusedIndex = -1) {
+  if (!result) {
+    return;
+  }
+
+  const corpus = `${result.snippets.join("\n")}\n${result.titles.join("\n")}`;
+  if (isBlockedCorpus(corpus)) {
+    return;
+  }
+
+  const normalizedCorpus = corpus.toLowerCase();
+  for (let index = 0; index < choices.length; index += 1) {
+    let score = scoreChoice(choices[index], normalizedCorpus, result.titles);
+    if (index === focusedIndex) {
+      score += 16;
+    }
+    scores[index] += score;
+  }
+}
+
 async function runGoogleQuery(query) {
   const apiResult = await googleCustomSearch(query);
   if (apiResult?.snippets?.length || apiResult?.titles?.length) {
@@ -364,11 +393,6 @@ async function runGoogleQuery(query) {
   const serperResult = await serperSearch(query);
   if (serperResult?.snippets?.length || serperResult?.titles?.length) {
     return serperResult;
-  }
-
-  const htmlResult = await googleHtmlSearch(query);
-  if (htmlResult?.snippets?.length || htmlResult?.titles?.length) {
-    return htmlResult;
   }
 
   return duckDuckGoSearch(query);
@@ -387,50 +411,42 @@ async function resolveFromGoogle(question, choices) {
     };
   }
 
-  const queries = buildSearchQueries(normalizedQuestion, choices);
-  const results = await Promise.all(
-    queries.map(async (query) => {
-      try {
-        const result = await runGoogleQuery(query);
-        return { query, result };
-      } catch {
-        return { query, result: null };
-      }
-    }),
-  );
-
-  const snippets = [];
-  const titles = [];
+  const queries = [normalizedQuestion];
+  const scores = choices.map(() => 0);
   const usedSources = new Set();
+  let snippetCount = 0;
 
-  for (const entry of results) {
-    if (!entry.result) {
-      continue;
-    }
-    usedSources.add(entry.result.source);
-    snippets.push(...entry.result.snippets);
-    titles.push(...entry.result.titles);
+  const main = await runGoogleQuery(normalizedQuestion);
+  if (main) {
+    usedSources.add(main.source);
+    snippetCount += main.snippets.length;
+    accumulateChoiceScores(choices, main, scores);
   }
 
-  const corpus = `${snippets.join("\n")}\n${titles.join("\n")}`.toLowerCase();
-  if (!corpus.trim()) {
-    return {
-      choiceIndex: null,
-      textAnswer: null,
-      confidence: 0,
-      source: "no-results",
-      queries,
-      snippetCount: 0,
-    };
+  for (let index = 0; index < choices.length; index += 1) {
+    const query = `${normalizedQuestion} ${choices[index]}`;
+    queries.push(query);
+    const result = await runGoogleQuery(query);
+    if (!result) {
+      continue;
+    }
+    usedSources.add(result.source);
+    snippetCount += result.snippets.length;
+    accumulateChoiceScores(choices, result, scores, index);
+
+    const best = Math.max(...scores);
+    const sorted = [...scores].sort((left, right) => right - left);
+    const second = sorted[1] || 0;
+    if (best >= 28 && best - second >= 12) {
+      break;
+    }
   }
 
   let bestIndex = -1;
   let bestScore = 0;
-
-  for (let index = 0; index < choices.length; index += 1) {
-    const score = scoreChoice(choices[index], corpus, titles);
-    if (score > bestScore) {
-      bestScore = score;
+  for (let index = 0; index < scores.length; index += 1) {
+    if (scores[index] > bestScore) {
+      bestScore = scores[index];
       bestIndex = index;
     }
   }
@@ -440,9 +456,9 @@ async function resolveFromGoogle(question, choices) {
       choiceIndex: null,
       textAnswer: null,
       confidence: bestScore,
-      source: "low-confidence",
+      source: snippetCount > 0 ? "low-confidence" : "no-results",
       queries,
-      snippetCount: snippets.length,
+      snippetCount,
     };
   }
 
@@ -450,9 +466,7 @@ async function resolveFromGoogle(question, choices) {
     ? "google-api"
     : usedSources.has("google-serper")
       ? "google-serper"
-      : usedSources.has("google-scrape")
-        ? "google"
-        : "google";
+      : "google";
 
   return {
     choiceIndex: bestIndex,
@@ -460,7 +474,7 @@ async function resolveFromGoogle(question, choices) {
     confidence: bestScore,
     source,
     queries,
-    snippetCount: snippets.length,
+    snippetCount,
   };
 }
 
