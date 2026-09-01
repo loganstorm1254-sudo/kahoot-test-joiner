@@ -104,12 +104,8 @@ async function reserveSession(pin) {
 }
 
 function makeWebSocketUrl(pin, cometToken) {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const params = new URLSearchParams({
-    pin,
-    token: cometToken,
-  });
-  return `${protocol}//${window.location.host}/api/ws?${params.toString()}`;
+  // Connect directly to Kahoot — browsers allow this. Only /api/session needs a proxy (CORS).
+  return `wss://kahoot.it/cometd/${encodeURIComponent(pin)}/${encodeURIComponent(cometToken)}`;
 }
 
 function parseData(data) {

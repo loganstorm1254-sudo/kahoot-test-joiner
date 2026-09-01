@@ -22,7 +22,7 @@ gh repo create kahoot-test-joiner --public --source=. --remote=origin --push
 3. Import the repo
 4. Deploy (no env vars needed)
 
-The `/api/session` route proxies Kahoot session reservation. The `/api/ws` route proxies the Kahoot WebSocket (required because browsers cannot connect directly to `wss://kahoot.it` from a web page).
+The `/api/session` route proxies Kahoot session reservation (avoids browser CORS). WebSocket connections go directly from the browser to `wss://kahoot.it`.
 
 ## Local dev
 

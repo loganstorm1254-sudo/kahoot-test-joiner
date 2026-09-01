@@ -89,11 +89,14 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
 
     const nickname = nicknames[index];
     const joiner = new KahootJoiner();
+    let joinTimeout;
+
     joiner.start({
       pin,
       nickname,
       autoAnswer,
       onJoined: () => {
+        clearTimeout(joinTimeout);
         if (activeSession !== session) {
           return;
         }
@@ -101,6 +104,7 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
         updateBatchStatus();
       },
       onError: (message) => {
+        clearTimeout(joinTimeout);
         if (activeSession !== session) {
           return;
         }
@@ -111,6 +115,16 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
     });
 
     joiners.push(joiner);
+
+    joinTimeout = setTimeout(() => {
+      if (activeSession !== session || joiner.joined) {
+        return;
+      }
+      lastError = "Join timed out — is the PIN correct and the host running?";
+      failedCount += 1;
+      joiner.stop();
+      updateBatchStatus();
+    }, 20000);
 
     if (index < nicknames.length - 1) {
       await sleep(delay);

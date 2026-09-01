@@ -1,8 +1,5 @@
 {
   "name": "kahoot-test-joiner",
   "private": true,
-  "type": "module",
-  "dependencies": {
-    "ws": "^8.18.3"
-  }
+  "type": "module"
 }
