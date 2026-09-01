@@ -812,16 +812,12 @@ async function validateGamePin(pin) {
   return true;
 }
 
-function openJoinerWithPin(rawPin, { autoJoin = true } = {}) {
-  const pin = normalizePin(rawPin);
-  pinInput.value = formatPinForDisplay(pin);
-  setView(true);
-  schedulePrefetch(pin);
-  refreshPrefetchStatus(pin, { force: true });
+function getRealKahootJoinUrl(pin) {
+  return `https://kahoot.it/?pin=${encodeURIComponent(normalizePin(pin))}`;
+}
 
-  if (autoJoin && !connected && !anyRunning()) {
-    onJoin();
-  }
+function redirectToRealKahoot(pin) {
+  window.location.assign(getRealKahootJoinUrl(pin));
 }
 
 async function onDecoySubmit(event) {
@@ -847,12 +843,11 @@ async function onDecoySubmit(event) {
 
   try {
     await validateGamePin(pin);
-    openJoinerWithPin(pin);
+    redirectToRealKahoot(pin);
   } catch (error) {
     if (decoyStatusEl) {
       decoyStatusEl.textContent = error.message || "That game doesn't seem to exist. Check the PIN and try again.";
     }
-  } finally {
     decoyEnterButton.classList.remove("is-loading");
     decoyEnterButton.disabled = false;
   }
