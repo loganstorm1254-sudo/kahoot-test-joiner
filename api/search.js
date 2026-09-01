@@ -325,17 +325,18 @@ function parseDuckDuckGoHtml(html) {
 }
 
 async function duckDuckGoSearch(query) {
-  const url = new URL("https://html.duckduckgo.com/html/");
-  url.searchParams.set("q", query);
-  url.searchParams.set("kl", "us-en");
-
-  const response = await fetch(url, {
-    method: "GET",
+  const response = await fetch("https://html.duckduckgo.com/html/", {
+    method: "POST",
     headers: {
       Accept: "text/html,application/xhtml+xml",
       "Accept-Language": "en-US,en;q=0.9",
+      "Content-Type": "application/x-www-form-urlencoded",
       "User-Agent": USER_AGENT,
     },
+    body: new URLSearchParams({
+      q: query,
+      kl: "us-en",
+    }),
   });
 
   if (!response.ok) {
@@ -349,9 +350,79 @@ async function duckDuckGoSearch(query) {
   }
 
   return {
-    source: "google-fallback",
+    source: "google",
     snippets: parsed.snippets,
     titles: parsed.titles,
+  };
+}
+
+async function wikipediaSearch(query) {
+  const search = await fetch(
+    `https://en.wikipedia.org/w/api.php?${new URLSearchParams({
+      action: "query",
+      list: "search",
+      srsearch: query.slice(0, 220),
+      srlimit: "3",
+      utf8: "1",
+      format: "json",
+      origin: "*",
+    })}`,
+    {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": USER_AGENT,
+      },
+    },
+  );
+
+  if (!search.ok) {
+    return null;
+  }
+
+  const searchData = await search.json().catch(() => null);
+  const titles = (searchData?.query?.search || []).map((entry) => entry.title).filter(Boolean);
+  if (!titles.length) {
+    return null;
+  }
+
+  const extracts = await fetch(
+    `https://en.wikipedia.org/w/api.php?${new URLSearchParams({
+      action: "query",
+      prop: "extracts",
+      explaintext: "1",
+      exintro: "1",
+      exsentences: "8",
+      titles: titles.join("|"),
+      redirects: "1",
+      format: "json",
+      origin: "*",
+    })}`,
+    {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": USER_AGENT,
+      },
+    },
+  );
+
+  if (!extracts.ok) {
+    return null;
+  }
+
+  const extractData = await extracts.json().catch(() => null);
+  const pages = extractData?.query?.pages || {};
+  const snippets = Object.values(pages)
+    .map((page) => String(page.extract || "").trim())
+    .filter(Boolean);
+
+  if (!snippets.length) {
+    return null;
+  }
+
+  return {
+    source: "google",
+    snippets,
+    titles,
   };
 }
 
@@ -395,7 +466,12 @@ async function runGoogleQuery(query) {
     return serperResult;
   }
 
-  return duckDuckGoSearch(query);
+  const ddgResult = await duckDuckGoSearch(query);
+  if (ddgResult?.snippets?.length || ddgResult?.titles?.length) {
+    return ddgResult;
+  }
+
+  return wikipediaSearch(query);
 }
 
 async function resolveFromGoogle(question, choices) {
