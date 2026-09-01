@@ -2,8 +2,6 @@ const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 const SERVICE_CHANNELS = ["/service/controller", "/service/player", "/service/status"];
-const ANSWER_TRIGGER_IDS = new Set([1, 2, 43]);
-const IGNORE_PLAYER_IDS = new Set([3, 7, 8, 9, 10, 14]);
 
 const CHALLENGE_RE =
   /decode\.call\(this,\s*'([a-zA-Z0-9]*)'\);\s*function decode\(message\)\s*\{var offset = ([0-9+\-*/()\s]+);/;
@@ -160,6 +158,7 @@ export class KahootJoiner {
     this.runId = 0;
     this.cid = null;
     this.answerTimer = null;
+    this.questionStartTime = 0;
   }
 
   start({ pin, nickname, autoAnswer, onJoined, onError }) {
@@ -449,12 +448,15 @@ export class KahootJoiner {
     return Math.floor(Math.random() * Math.max(numChoices, 1));
   }
 
-  parseChoiceCount(content, questionType) {
+  parseChoiceCount(content, questionType, questionIndex) {
     if (questionType === "jumble") {
       return 4;
     }
     if (content.quizQuestionAnswers && content.quizQuestionAnswers.length > 0) {
-      return Math.min(Math.max(content.quizQuestionAnswers[0], 1), 6);
+      const arrayIndex = Math.max(0, (questionIndex || 1) - 1);
+      const count =
+        content.quizQuestionAnswers[arrayIndex] ?? content.quizQuestionAnswers[0];
+      return Math.min(Math.max(count, 1), 6);
     }
     if (content.answerMap) {
       return Math.min(Math.max(Object.keys(content.answerMap).length, 1), 6);
@@ -470,7 +472,7 @@ export class KahootJoiner {
       this.currentQuestionIndex = content.questionIndex;
     } else if (content.questionNumber != null) {
       this.currentQuestionIndex = content.questionNumber;
-    } else if (messageId === 2 || messageId === 1) {
+    } else if (messageId === 2) {
       this.currentQuestionIndex = Math.max(this.currentQuestionIndex, 1);
     }
 
@@ -482,21 +484,14 @@ export class KahootJoiner {
       this.currentQuestionType = quizType;
     }
 
-    const choiceCount = this.parseChoiceCount(content, this.currentQuestionType);
+    const choiceCount = this.parseChoiceCount(
+      content,
+      this.currentQuestionType,
+      this.currentQuestionIndex,
+    );
     if (choiceCount) {
       this.currentNumChoices = choiceCount;
     }
-  }
-
-  isAnswerableMessage(id, contentStr) {
-    if (IGNORE_PLAYER_IDS.has(id)) {
-      return false;
-    }
-    return (
-      ANSWER_TRIGGER_IDS.has(id) ||
-      contentStr.includes("quizQuestionAnswers") ||
-      contentStr.includes("answerMap")
-    );
   }
 
   sendAnswerModern(choice) {
@@ -514,6 +509,52 @@ export class KahootJoiner {
     }
 
     this.sendControllerMessage(45, JSON.stringify(inner));
+  }
+
+  sendAnswerLegacy(choice) {
+    const sync = this.timesync || { l: 30, o: 0 };
+    const inner = {
+      choice,
+      meta: {
+        lag: sync.l,
+        device: {
+          userAgent: USER_AGENT,
+          screen: { width: 1920, height: 1080 },
+        },
+      },
+    };
+    this.sendControllerMessage(6, JSON.stringify(inner));
+  }
+
+  scheduleAutoAnswer(runId) {
+    if (!this.autoAnswer || this.closed || !this.readyToPlay) {
+      return;
+    }
+    if (this.currentQuestionIndex === this.lastAnsweredIndex) {
+      return;
+    }
+
+    this.lastAnsweredIndex = this.currentQuestionIndex;
+    const choice = this.buildRandomChoice(this.currentQuestionType, this.currentNumChoices);
+    const sinceStart = Date.now() - (this.questionStartTime || 0);
+    const minWait = Math.max(250 - sinceStart, 0);
+    const answerDelay = minWait + 400 + Math.floor(Math.random() * 1400);
+
+    if (this.answerTimer) {
+      clearTimeout(this.answerTimer);
+    }
+
+    this.answerTimer = setTimeout(() => {
+      if (!this.closed && runId === this.runId) {
+        this.sendAnswerModern(choice);
+        // Some live games still accept the legacy answer packet.
+        setTimeout(() => {
+          if (!this.closed && runId === this.runId) {
+            this.sendAnswerLegacy(typeof choice === "number" ? choice : 0);
+          }
+        }, 80);
+      }
+    }, answerDelay);
   }
 
   handlePlayerMessage(data, runId) {
@@ -552,29 +593,21 @@ export class KahootJoiner {
       return;
     }
 
-    if (!this.autoAnswer || this.closed || !this.readyToPlay) {
-      return;
-    }
-    if (!this.isAnswerableMessage(id, contentStr)) {
-      return;
-    }
-    if (this.currentQuestionIndex === this.lastAnsweredIndex) {
+    // id 1 = question ready (countdown). Only answer after id 2 (question start).
+    if (id === 1) {
       return;
     }
 
-    this.lastAnsweredIndex = this.currentQuestionIndex;
-    const choice = this.buildRandomChoice(this.currentQuestionType, this.currentNumChoices);
-    const answerDelay = 400 + Math.floor(Math.random() * 1400);
-
-    if (this.answerTimer) {
-      clearTimeout(this.answerTimer);
+    if (id === 2) {
+      this.questionStartTime = Date.now();
+      this.scheduleAutoAnswer(runId);
+      return;
     }
 
-    this.answerTimer = setTimeout(() => {
-      if (!this.closed && runId === this.runId) {
-        this.sendAnswerModern(choice);
-      }
-    }, answerDelay);
+    if (id === 43) {
+      this.questionStartTime = Date.now();
+      this.scheduleAutoAnswer(runId);
+    }
   }
 
   onMessage(raw, runId) {
