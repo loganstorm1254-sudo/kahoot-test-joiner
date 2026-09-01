@@ -14,7 +14,7 @@
         color: #1d1d1f !important;
       }
     </style>
-    <link rel="stylesheet" href="/styles.css?v=apple-store-v15" />
+    <link rel="stylesheet" href="/styles.css?v=apple-store-v16" />
   </head>
   <body>
     <div class="store-shell">
@@ -94,11 +94,11 @@
                 </fieldset>
 
                 <fieldset class="config-group">
-                  <div class="config-row">
-                    <legend class="config-legend inline">Players to join</legend>
-                    <span id="count-label" class="config-value">1</span>
+                  <legend class="config-legend">Players to join</legend>
+                  <div class="count-control">
+                    <input id="count" type="range" min="1" max="44" value="1" aria-label="Players to join" />
+                    <input id="count-input" type="number" min="1" max="44" value="1" inputmode="numeric" aria-label="Number of players" />
                   </div>
-                  <input id="count" type="range" min="1" max="100" value="1" />
                 </fieldset>
 
                 <fieldset class="config-group config-group-options">
@@ -143,7 +143,7 @@
             <article class="product-tile">
               <div class="tile-visual" aria-hidden="true"></div>
               <h2 class="tile-title">Batch join</h2>
-              <p class="tile-copy">Add up to 100 players with staggered connections so the host stays stable.</p>
+              <p class="tile-copy">Add up to 44 players with staggered connections so the host stays stable.</p>
             </article>
             <article class="product-tile">
               <div class="tile-visual" aria-hidden="true"></div>
@@ -239,6 +239,6 @@
       </footer>
     </div>
 
-    <script type="module" src="/app.js?v=apple-store-v15"></script>
+    <script type="module" src="/app.js?v=apple-store-v16"></script>
   </body>
 </html>

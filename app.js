@@ -16,7 +16,7 @@ import { CLIENT_BUILD } from "./version.js";
 const pinInput = document.getElementById("pin");
 const nameInput = document.getElementById("name");
 const countSlider = document.getElementById("count");
-const countLabel = document.getElementById("count-label");
+const countInput = document.getElementById("count-input");
 const randomNamesCheck = document.getElementById("random-names");
 const autoAnswerCheck = document.getElementById("auto-answer");
 const joinButton = document.getElementById("join");
@@ -41,12 +41,20 @@ let sharedQuizLoadPromise = null;
 let loadedVersion = "";
 let latestVersion = "";
 
-function getPlayerCount() {
-  return Math.max(1, Math.min(100, Math.round(Number(countSlider.value))));
+const MAX_PLAYERS = 44;
+
+function clampPlayerCount(value) {
+  return Math.max(1, Math.min(MAX_PLAYERS, Math.round(Number(value)) || 1));
 }
 
-function updateCountLabel() {
-  countLabel.textContent = String(getPlayerCount());
+function setPlayerCount(value) {
+  const count = clampPlayerCount(value);
+  countSlider.value = String(count);
+  countInput.value = String(count);
+}
+
+function getPlayerCount() {
+  return clampPlayerCount(countInput.value || countSlider.value);
 }
 
 function setConnected(value) {
@@ -56,6 +64,7 @@ function setConnected(value) {
   pinInput.disabled = value;
   nameInput.disabled = value || randomNamesCheck.checked;
   countSlider.disabled = value;
+  countInput.disabled = value;
   randomNamesCheck.disabled = value;
   autoAnswerCheck.disabled = value;
 }
@@ -555,7 +564,33 @@ function onAutoAnswerToggle() {
   }
 }
 
-countSlider.addEventListener("input", updateCountLabel);
+countSlider.addEventListener("input", () => {
+  setPlayerCount(countSlider.value);
+});
+
+countInput.addEventListener("input", () => {
+  const raw = countInput.value.trim();
+  if (!raw) {
+    return;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    return;
+  }
+  const count = clampPlayerCount(parsed);
+  countSlider.value = String(count);
+  if (parsed !== count) {
+    countInput.value = String(count);
+  }
+});
+
+countInput.addEventListener("change", () => {
+  setPlayerCount(countInput.value);
+});
+
+countInput.addEventListener("blur", () => {
+  setPlayerCount(countInput.value);
+});
 randomNamesCheck.addEventListener("change", onRandomNamesToggle);
 autoAnswerCheck.addEventListener("change", onAutoAnswerToggle);
 pinInput.addEventListener("input", onPinInput);
@@ -588,7 +623,7 @@ for (const button of document.querySelectorAll("[data-tab-target]")) {
   });
 }
 
-updateCountLabel();
+setPlayerCount(1);
 onRandomNamesToggle();
 startPrefetchRetryLoop();
 schedulePrefetch(pinInput.value);

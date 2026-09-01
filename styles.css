@@ -270,8 +270,44 @@ input[type="text"]:focus {
 }
 
 #count {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   accent-color: var(--link);
+}
+
+.count-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#count-input {
+  width: 72px;
+  flex-shrink: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #ffffff;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.23536;
+  text-align: center;
+  letter-spacing: -0.022em;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  -moz-appearance: textfield;
+}
+
+#count-input::-webkit-outer-spin-button,
+#count-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+#count-input:focus {
+  outline: none;
+  border-color: var(--link);
+  box-shadow: 0 0 0 4px rgba(0, 102, 204, 0.14);
 }
 
 .config-group-options .config-legend {
