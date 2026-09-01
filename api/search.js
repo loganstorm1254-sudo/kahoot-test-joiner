@@ -224,19 +224,154 @@ async function googleHtmlSearch(query) {
   }
 
   const html = await response.text();
-  if (!html || /unusual traffic|captcha|sorry/i.test(html)) {
+  if (!html || /unusual traffic|captcha|consent\.google/i.test(html)) {
     return null;
   }
 
-  return parseGoogleHtml(html);
+  const parsed = parseGoogleHtml(html);
+  if (!parsed.snippets.length && !parsed.titles.length) {
+    return null;
+  }
+  return parsed;
+}
+
+async function serperSearch(query) {
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  const response = await fetch("https://google.serper.dev/search", {
+    method: "POST",
+    headers: {
+      "X-API-KEY": apiKey,
+      "Content-Type": "application/json",
+      "User-Agent": USER_AGENT,
+    },
+    body: JSON.stringify({
+      q: query,
+      num: 8,
+      hl: "en",
+      gl: "us",
+    }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json().catch(() => null);
+  const organic = data?.organic || [];
+  const answerBox = data?.answerBox;
+  const snippets = [];
+  const titles = [];
+
+  if (answerBox?.answer) {
+    snippets.push(String(answerBox.answer));
+  }
+  if (answerBox?.snippet) {
+    snippets.push(String(answerBox.snippet));
+  }
+  if (answerBox?.title) {
+    titles.push(String(answerBox.title));
+  }
+
+  for (const item of organic) {
+    if (item?.title) {
+      titles.push(String(item.title));
+    }
+    if (item?.snippet) {
+      snippets.push(String(item.snippet));
+    }
+  }
+
+  if (!snippets.length && !titles.length) {
+    return null;
+  }
+
+  return {
+    source: "google-serper",
+    snippets,
+    titles,
+  };
+}
+
+function parseDuckDuckGoHtml(html) {
+  const snippets = [];
+  const titles = [];
+
+  const snippetPattern = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+  const titlePattern = /class="result__a"[^>]*>([\s\S]*?)<\/a>/gi;
+
+  let match = snippetPattern.exec(html);
+  while (match) {
+    const text = stripHtml(match[1]);
+    if (text.length >= 8) {
+      snippets.push(text);
+    }
+    match = snippetPattern.exec(html);
+  }
+
+  match = titlePattern.exec(html);
+  while (match) {
+    const text = stripHtml(match[1]);
+    if (text.length >= 3) {
+      titles.push(text);
+    }
+    match = titlePattern.exec(html);
+  }
+
+  return { snippets, titles };
+}
+
+async function duckDuckGoSearch(query) {
+  const url = new URL("https://html.duckduckgo.com/html/");
+  url.searchParams.set("q", query);
+  url.searchParams.set("kl", "us-en");
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": "en-US,en;q=0.9",
+      "User-Agent": USER_AGENT,
+    },
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const html = await response.text();
+  const parsed = parseDuckDuckGoHtml(html);
+  if (!parsed.snippets.length && !parsed.titles.length) {
+    return null;
+  }
+
+  return {
+    source: "google-fallback",
+    snippets: parsed.snippets,
+    titles: parsed.titles,
+  };
 }
 
 async function runGoogleQuery(query) {
   const apiResult = await googleCustomSearch(query);
-  if (apiResult?.snippets?.length) {
+  if (apiResult?.snippets?.length || apiResult?.titles?.length) {
     return apiResult;
   }
-  return googleHtmlSearch(query);
+
+  const serperResult = await serperSearch(query);
+  if (serperResult?.snippets?.length || serperResult?.titles?.length) {
+    return serperResult;
+  }
+
+  const htmlResult = await googleHtmlSearch(query);
+  if (htmlResult?.snippets?.length || htmlResult?.titles?.length) {
+    return htmlResult;
+  }
+
+  return duckDuckGoSearch(query);
 }
 
 async function resolveFromGoogle(question, choices) {
@@ -300,7 +435,7 @@ async function resolveFromGoogle(question, choices) {
     }
   }
 
-  if (bestIndex < 0 || bestScore < 8) {
+  if (bestIndex < 0 || bestScore < 5) {
     return {
       choiceIndex: null,
       textAnswer: null,
@@ -311,11 +446,19 @@ async function resolveFromGoogle(question, choices) {
     };
   }
 
+  const source = usedSources.has("google-api")
+    ? "google-api"
+    : usedSources.has("google-serper")
+      ? "google-serper"
+      : usedSources.has("google-scrape")
+        ? "google"
+        : "google";
+
   return {
     choiceIndex: bestIndex,
     textAnswer: choices[bestIndex],
     confidence: bestScore,
-    source: usedSources.has("google-api") ? "google-api" : "google",
+    source,
     queries,
     snippetCount: snippets.length,
   };
