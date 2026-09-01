@@ -7,88 +7,116 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <nav class="site-nav" aria-label="Main">
-      <div class="nav-inner">
-        <div class="nav-tabs" role="tablist">
-          <button
-            id="tab-join"
-            class="nav-tab is-active"
-            type="button"
-            role="tab"
-            aria-selected="true"
-            aria-controls="panel-join"
-            data-tab-target="join"
-          >
-            Join
-          </button>
-          <button
-            id="tab-features"
-            class="nav-tab"
-            type="button"
-            role="tab"
-            aria-selected="false"
-            aria-controls="panel-features"
-            data-tab-target="features"
-          >
-            Features
-          </button>
-          <button
-            id="tab-qa"
-            class="nav-tab"
-            type="button"
-            role="tab"
-            aria-selected="false"
-            aria-controls="panel-qa"
-            data-tab-target="qa"
-          >
-            Q&amp;A
-          </button>
-        </div>
+    <nav class="globalnav" aria-label="Main">
+      <div class="globalnav-content">
+        <ul class="globalnav-list" role="tablist">
+          <li>
+            <button
+              id="tab-join"
+              class="globalnav-link is-active"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="panel-join"
+              data-tab-target="join"
+            >
+              Join
+            </button>
+          </li>
+          <li>
+            <button
+              id="tab-features"
+              class="globalnav-link"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="panel-features"
+              data-tab-target="features"
+            >
+              Features
+            </button>
+          </li>
+          <li>
+            <button
+              id="tab-qa"
+              class="globalnav-link"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="panel-qa"
+              data-tab-target="qa"
+            >
+              Q&amp;A
+            </button>
+          </li>
+        </ul>
       </div>
     </nav>
 
-    <section id="panel-join" class="tab-panel" data-tab-panel="join" role="tabpanel" aria-labelledby="tab-join">
-      <header class="hero">
-        <h1 class="hero-title">Join a live game.</h1>
-        <p class="hero-lead">Add extra players to a running session. Fast, simple, automatic.</p>
-      </header>
-
-      <main class="join-card">
-        <label class="field-label" for="pin">Game PIN</label>
-        <input id="pin" type="text" inputmode="numeric" placeholder="123 456" autocomplete="off" />
-
-        <label class="field-label" for="name">Base player name</label>
-        <input id="name" type="text" value="bot.locker-rover.dev" autocomplete="off" />
-        <p class="field-hint">Names become bot.locker-rover.dev1, bot.locker-rover.dev2… unless random names is on.</p>
-
-        <div class="count-row">
-          <label class="field-label inline" for="count">Players to join</label>
-          <strong id="count-label" class="count-value">1</strong>
+    <div id="panel-join" class="tab-panel" data-tab-panel="join" role="tabpanel" aria-labelledby="tab-join">
+      <section class="section section-hero section-hero-dark">
+        <div class="section-content">
+          <h1 class="headline headline-elevated">Join.</h1>
+          <p class="subhead subhead-elevated">Extra players. One PIN. Zero hassle.</p>
+          <p class="avail">Available in any live session.</p>
+          <div class="cta-links">
+            <a class="link cta-link" href="#join-form">Get started ›</a>
+          </div>
         </div>
-        <input id="count" type="range" min="1" max="100" value="1" />
+      </section>
 
-        <div class="options">
-          <label class="checkbox-row">
-            <input id="random-names" type="checkbox" checked />
-            <span>Random names</span>
-          </label>
-          <label class="checkbox-row">
-            <input id="auto-answer" type="checkbox" checked />
-            <span>Auto-answer questions</span>
-          </label>
+      <section id="join-form" class="section section-light">
+        <div class="section-content section-content-narrow">
+          <h2 class="headline headline-small">Enter the game.</h2>
+          <p class="subhead subhead-tight">Type the host PIN and choose how many players to add.</p>
+
+          <form class="join-form" onsubmit="return false">
+            <div class="form-row">
+              <label class="form-label" for="pin">Game PIN</label>
+              <input id="pin" type="text" inputmode="numeric" placeholder="123 456" autocomplete="off" />
+            </div>
+
+            <div class="form-row">
+              <label class="form-label" for="name">Base player name</label>
+              <input id="name" type="text" value="bot.locker-rover.dev" autocomplete="off" />
+              <p class="form-note">
+                Names become bot.locker-rover.dev1, bot.locker-rover.dev2… unless random names is on.
+              </p>
+            </div>
+
+            <div class="form-row">
+              <div class="form-inline">
+                <label class="form-label" for="count">Players to join</label>
+                <span id="count-label" class="form-value">1</span>
+              </div>
+              <input id="count" type="range" min="1" max="100" value="1" />
+            </div>
+
+            <div class="form-toggles">
+              <label class="toggle-row">
+                <input id="random-names" type="checkbox" checked />
+                <span>Random names</span>
+              </label>
+              <label class="toggle-row">
+                <input id="auto-answer" type="checkbox" checked />
+                <span>Auto-answer questions</span>
+              </label>
+            </div>
+
+            <div class="form-actions">
+              <button id="join" type="button" class="button button-primary">Enter</button>
+              <button id="disconnect" type="button" class="button button-secondary" disabled>Leave all</button>
+            </div>
+          </form>
+
+          <p id="status" class="status">Enter a PIN to join</p>
+          <p id="quiz-result" class="quiz-result" hidden></p>
+          <p id="version-info" class="version-info">Checking version…</p>
         </div>
+      </section>
+    </div>
 
-        <button id="join" type="button" class="btn-primary">Enter</button>
-        <button id="disconnect" type="button" class="btn-secondary" disabled>Leave all</button>
-
-        <p id="status" class="status">Enter a PIN to join</p>
-        <p id="quiz-result" class="quiz-result" hidden></p>
-        <p id="version-info" class="version-info">Checking version…</p>
-        <p class="fineprint">-test</p>
-      </main>
-    </section>
-
-    <section
+    <div
       id="panel-features"
       class="tab-panel is-hidden"
       data-tab-panel="features"
@@ -96,40 +124,69 @@
       aria-labelledby="tab-features"
       hidden
     >
-      <header class="page-header">
-        <h1 class="page-title">Features</h1>
-        <p class="page-lead">Everything you need to scale up a live session.</p>
-      </header>
+      <section class="section section-hero section-hero-dark">
+        <div class="section-content">
+          <h1 class="headline headline-elevated">Features.</h1>
+          <p class="subhead subhead-elevated">Designed to scale up any session.</p>
+        </div>
+      </section>
 
-      <div class="feature-grid">
-        <article class="feature-card">
-          <h2>Batch join</h2>
-          <p>Send up to 100 players into one game with staggered connections so the host stays stable.</p>
-        </article>
-        <article class="feature-card">
-          <h2>Auto-answer</h2>
-          <p>Bots answer on their own — instantly when the answer key is known, or after a quick web search.</p>
-        </article>
-        <article class="feature-card">
-          <h2>Smart lookup</h2>
-          <p>Public quizzes are matched by title and layout. Private games learn the correct choice after each reveal.</p>
-        </article>
-        <article class="feature-card">
-          <h2>Spaced PINs</h2>
-          <p>Type PINs naturally, like <strong>123 456</strong>. Spaces and formatting are handled for you.</p>
-        </article>
-        <article class="feature-card">
-          <h2>Stay connected</h2>
-          <p>Dropped connections retry automatically. Answering resumes when a question is still open.</p>
-        </article>
-        <article class="feature-card">
-          <h2>End-of-game stats</h2>
-          <p>See ranks, scores, and which bot finished on top when the host ends the quiz.</p>
-        </article>
-      </div>
-    </section>
+      <section class="section section-light">
+        <div class="section-content">
+          <h2 class="headline headline-small">Batch join.</h2>
+          <p class="subhead subhead-tight">
+            Add up to 100 players at once. Connections are staggered so the host stays smooth.
+          </p>
+        </div>
+      </section>
 
-    <section
+      <section class="section section-gray">
+        <div class="section-content">
+          <h2 class="headline headline-small">Auto-answer.</h2>
+          <p class="subhead subhead-tight">
+            Bots respond on their own — instantly when the answer key is known, or after a quick web search.
+          </p>
+        </div>
+      </section>
+
+      <section class="section section-light">
+        <div class="section-content">
+          <h2 class="headline headline-small">Smart lookup.</h2>
+          <p class="subhead subhead-tight">
+            Public quizzes are matched by title and layout. Private games learn from each reveal.
+          </p>
+        </div>
+      </section>
+
+      <section class="section section-gray">
+        <div class="section-content">
+          <h2 class="headline headline-small">Spaced PINs.</h2>
+          <p class="subhead subhead-tight">
+            Type naturally — like <strong>123 456</strong>. Formatting is handled automatically.
+          </p>
+        </div>
+      </section>
+
+      <section class="section section-light">
+        <div class="section-content">
+          <h2 class="headline headline-small">Stay connected.</h2>
+          <p class="subhead subhead-tight">
+            Dropped connections retry on their own. Answering picks back up when a question is still open.
+          </p>
+        </div>
+      </section>
+
+      <section class="section section-gray">
+        <div class="section-content">
+          <h2 class="headline headline-small">End-of-game stats.</h2>
+          <p class="subhead subhead-tight">
+            Ranks, scores, and a clear winner when the host ends the quiz.
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <div
       id="panel-qa"
       class="tab-panel is-hidden"
       data-tab-panel="qa"
@@ -137,38 +194,67 @@
       aria-labelledby="tab-qa"
       hidden
     >
-      <header class="page-header">
-        <h1 class="page-title">Q&amp;A</h1>
-        <p class="page-lead">Quick answers before you enter a game.</p>
-      </header>
+      <section class="section section-hero section-hero-dark">
+        <div class="section-content">
+          <h1 class="headline headline-elevated">Q&amp;A.</h1>
+          <p class="subhead subhead-elevated">Answers to your questions.</p>
+        </div>
+      </section>
 
-      <div class="faq-list">
-        <details class="faq-item" open>
-          <summary>How do I join?</summary>
-          <p>Enter the host’s PIN, choose how many players to add, then tap <strong>Enter</strong>. Use <strong>Leave all</strong> to disconnect every bot.</p>
-        </details>
-        <details class="faq-item">
-          <summary>Does this work on private quizzes?</summary>
-          <p>Yes for joining. Answer lookup works best on public quizzes; private games guess at first, then learn from each reveal.</p>
-        </details>
-        <details class="faq-item">
-          <summary>Why do bots answer at different speeds?</summary>
-          <p>Known answers are sent immediately. When a bot needs to search, it waits briefly so results can come back before submitting.</p>
-        </details>
-        <details class="faq-item">
-          <summary>Can I use my own player names?</summary>
-          <p>Turn off <strong>Random names</strong> and set a base name. Each bot gets a number suffix unless you join only one player.</p>
-        </details>
-        <details class="faq-item">
-          <summary>What does the version line at the bottom mean?</summary>
-          <p>It shows the build running in your browser and whether a newer deploy is available. Hard-refresh if it says an update is ready.</p>
-        </details>
-        <details class="faq-item">
-          <summary>Will the host know these are bots?</summary>
-          <p>They appear as normal players in the lobby. Use responsibly and only in games where extra players are allowed.</p>
-        </details>
+      <section class="section section-light">
+        <div class="section-content section-content-narrow">
+          <ul class="faq">
+            <li class="faq-item">
+              <h3 class="faq-question">How do I join?</h3>
+              <p class="faq-answer">
+                Enter the host’s PIN, choose how many players to add, then select <strong>Enter</strong>. Use
+                <strong>Leave all</strong> to disconnect every bot.
+              </p>
+            </li>
+            <li class="faq-item">
+              <h3 class="faq-question">Does this work on private quizzes?</h3>
+              <p class="faq-answer">
+                Yes for joining. Answer lookup works best on public quizzes; private games guess at first, then learn
+                from each reveal.
+              </p>
+            </li>
+            <li class="faq-item">
+              <h3 class="faq-question">Why do bots answer at different speeds?</h3>
+              <p class="faq-answer">
+                Known answers are sent immediately. When a bot needs to search, it waits briefly so results can come
+                back before submitting.
+              </p>
+            </li>
+            <li class="faq-item">
+              <h3 class="faq-question">Can I use my own player names?</h3>
+              <p class="faq-answer">
+                Turn off <strong>Random names</strong> and set a base name. Each bot gets a number suffix unless you
+                join only one player.
+              </p>
+            </li>
+            <li class="faq-item">
+              <h3 class="faq-question">What does the version line mean?</h3>
+              <p class="faq-answer">
+                It shows the build in your browser and whether a newer deploy is available. Hard-refresh if an update is
+                ready.
+              </p>
+            </li>
+            <li class="faq-item">
+              <h3 class="faq-question">Will the host know these are bots?</h3>
+              <p class="faq-answer">
+                They appear as normal players in the lobby. Use responsibly and only where extra players are allowed.
+              </p>
+            </li>
+          </ul>
+        </div>
+      </section>
+    </div>
+
+    <footer class="globalfooter">
+      <div class="globalfooter-content">
+        <p class="globalfooter-mini">-test</p>
       </div>
-    </section>
+    </footer>
 
     <script type="module" src="/app.js"></script>
   </body>

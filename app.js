@@ -578,6 +578,8 @@ function setActiveTab(name) {
     panel.classList.toggle("is-hidden", !isActive);
     panel.hidden = !isActive;
   }
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 for (const button of document.querySelectorAll("[data-tab-target]")) {
