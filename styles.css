@@ -181,3 +181,12 @@ button:active:not(:disabled) {
   font-size: 0.95rem;
   line-height: 1.45;
 }
+
+.quiz-result.is-winner {
+  background: linear-gradient(180deg, #fff8db 0%, #ffe9a8 100%);
+  border-color: #f0c419;
+  color: #5c4300;
+  font-size: 1.05rem;
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(240, 196, 25, 0.25);
+}

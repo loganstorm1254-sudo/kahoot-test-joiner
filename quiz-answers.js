@@ -1,6 +1,7 @@
 const learnedAnswersByPin = new Map();
 const cacheByPin = new Map();
-const inflightByPin = new Map();
+const cacheByTitle = new Map();
+const inflight = new Map();
 
 export function normalizePin(pin) {
   return String(pin || "").replace(/\s+/g, "");
@@ -8,6 +9,10 @@ export function normalizePin(pin) {
 
 export function isValidPin(pin) {
   return /^\d{6,}$/.test(normalizePin(pin));
+}
+
+function cacheKeyForTitle(title, counts) {
+  return `${String(title || "").trim().toLowerCase()}::${(counts || []).join(",")}`;
 }
 
 export function rememberCorrectChoices(pin, quizQuestionIndex, correctChoices) {
@@ -44,7 +49,32 @@ export function getCachedQuizAnswers(pin) {
 export function clearQuizCache(pin) {
   const normalizedPin = normalizePin(pin);
   cacheByPin.delete(normalizedPin);
-  inflightByPin.delete(normalizedPin);
+  inflight.delete(`pin:${normalizedPin}`);
+}
+
+function storeQuizAnswers(data, { pin, title, counts } = {}) {
+  if (!data?.answers?.length) {
+    return null;
+  }
+  if (pin) {
+    cacheByPin.set(normalizePin(pin), data);
+  }
+  if (title) {
+    cacheByTitle.set(cacheKeyForTitle(title, counts), data);
+  }
+  return data;
+}
+
+async function fetchQuizApi(query) {
+  const response = await fetch(`/api/quiz?${query}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.error) {
+    return null;
+  }
+  if (!Array.isArray(data.answers) || data.answers.length === 0) {
+    return null;
+  }
+  return data;
 }
 
 export async function fetchQuizAnswers(pin, { force = false } = {}) {
@@ -57,19 +87,39 @@ export async function fetchQuizAnswers(pin, { force = false } = {}) {
     return cacheByPin.get(normalizedPin);
   }
 
-  const response = await fetch(`/api/quiz?pin=${encodeURIComponent(normalizedPin)}`);
-  const data = await response.json().catch(() => ({}));
+  const data = await fetchQuizApi(`pin=${encodeURIComponent(normalizedPin)}`);
+  return storeQuizAnswers(data, { pin: normalizedPin });
+}
 
-  if (!response.ok || data.error) {
-    return null;
+export async function fetchQuizByTitle(title, choiceCounts, pin) {
+  const counts = Array.isArray(choiceCounts) ? choiceCounts : [];
+  const cacheKey = cacheKeyForTitle(title, counts);
+  if (cacheByTitle.has(cacheKey)) {
+    const cached = cacheByTitle.get(cacheKey);
+    if (pin) {
+      cacheByPin.set(normalizePin(pin), cached);
+    }
+    return cached;
   }
 
-  if (!Array.isArray(data.answers) || data.answers.length === 0) {
-    return null;
+  const inflightKey = `title:${cacheKey}`;
+  if (inflight.has(inflightKey)) {
+    return inflight.get(inflightKey);
   }
 
-  cacheByPin.set(normalizedPin, data);
-  return data;
+  const promise = (async () => {
+    const params = new URLSearchParams({
+      title: String(title || ""),
+      counts: counts.join(","),
+    });
+    const data = await fetchQuizApi(params.toString());
+    return storeQuizAnswers(data, { pin, title, counts });
+  })().finally(() => {
+    inflight.delete(inflightKey);
+  });
+
+  inflight.set(inflightKey, promise);
+  return promise;
 }
 
 export function prefetchQuizAnswers(pin, { force = false } = {}) {
@@ -82,17 +132,16 @@ export function prefetchQuizAnswers(pin, { force = false } = {}) {
     return Promise.resolve(cacheByPin.get(normalizedPin));
   }
 
-  const inflight = inflightByPin.get(normalizedPin);
-  if (inflight) {
-    return inflight;
+  const inflightKey = `pin:${normalizedPin}`;
+  if (inflight.has(inflightKey)) {
+    return inflight.get(inflightKey);
   }
 
-  const promise = fetchQuizAnswers(normalizedPin, { force })
-    .finally(() => {
-      inflightByPin.delete(normalizedPin);
-    });
+  const promise = fetchQuizAnswers(normalizedPin, { force }).finally(() => {
+    inflight.delete(inflightKey);
+  });
 
-  inflightByPin.set(normalizedPin, promise);
+  inflight.set(inflightKey, promise);
   return promise;
 }
 

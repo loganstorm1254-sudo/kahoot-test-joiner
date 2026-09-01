@@ -1,4 +1,4 @@
-import { rememberCorrectChoices, resolveChoice } from "./quiz-answers.js";
+import { getLearnedCorrectIndices, rememberCorrectChoices, resolveChoice } from "./quiz-answers.js";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -149,6 +149,21 @@ function isAnswerableBlockType(type) {
   return value && value !== "content";
 }
 
+function parseMessageContent(data) {
+  const raw = data?.content;
+  if (raw == null || raw === "") {
+    return {};
+  }
+  if (typeof raw === "object") {
+    return raw;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
 export class KahootJoiner {
   constructor() {
     this.reset();
@@ -162,6 +177,8 @@ export class KahootJoiner {
     this.onError = () => {};
     this.onStatus = () => {};
     this.onGameEnd = () => {};
+    this.onQuizStart = () => {};
+    this.onLearnedAnswer = () => {};
 
     this.ws = null;
     this.clientId = null;
@@ -192,13 +209,20 @@ export class KahootJoiner {
     this.gameEndReported = false;
     this.pendingGameEnd = null;
     this.gameEndTimer = null;
+    this.pendingRanking = null;
+  }
+
+  applyQuizAnswers(quizAnswers) {
+    if (quizAnswers?.answers?.length) {
+      this.quizAnswers = quizAnswers;
+    }
   }
 
   status(message) {
     this.onStatus(message);
   }
 
-  start({ pin, nickname, autoAnswer, onJoined, onError, onStatus, onGameEnd, quizAnswers }) {
+  start({ pin, nickname, autoAnswer, onJoined, onError, onStatus, onGameEnd, onQuizStart, onLearnedAnswer, quizAnswers }) {
     this.stop(false);
     this.reset();
 
@@ -210,6 +234,8 @@ export class KahootJoiner {
     this.onError = onError || (() => {});
     this.onStatus = onStatus || (() => {});
     this.onGameEnd = onGameEnd || (() => {});
+    this.onQuizStart = onQuizStart || (() => {});
+    this.onLearnedAnswer = onLearnedAnswer || (() => {});
 
     this.runId += 1;
     const runId = this.runId;
@@ -500,7 +526,10 @@ export class KahootJoiner {
       this.activeQuizQuestionIndex >= 0
         ? this.activeQuizQuestionIndex
         : this.currentQuestionIndex;
-    return Boolean(this.quizAnswers?.answers?.[quizIndex]?.correctIndices?.length);
+    return Boolean(
+      this.quizAnswers?.answers?.[quizIndex]?.correctIndices?.length ||
+        getLearnedCorrectIndices(this.pin, quizIndex)?.length,
+    );
   }
 
   parseChoiceCount(content, questionType, questionIndex) {
@@ -573,14 +602,16 @@ export class KahootJoiner {
   sendAnswerModern(choice) {
     const questionIndex = this.currentQuestionIndex;
     const type = normalizeQuestionType(this.currentQuestionType || "quiz");
+    const lag = Math.max(0, Date.now() - (this.questionStartTime || Date.now()));
+    const sync = this.timesync || { l: 30, o: 0 };
     let inner;
 
     if (typeof choice === "string") {
-      inner = { text: choice, questionIndex, type };
+      inner = { text: choice, questionIndex, type, meta: { lag: Math.max(lag, sync.l) } };
     } else if (Array.isArray(choice)) {
-      inner = { choice, questionIndex, type };
+      inner = { choice, questionIndex, type, meta: { lag: Math.max(lag, sync.l) } };
     } else {
-      inner = { choice, questionIndex, type };
+      inner = { choice, questionIndex, type, meta: { lag: Math.max(lag, sync.l) } };
     }
 
     this.sendControllerMessage(45, JSON.stringify(inner));
@@ -655,7 +686,7 @@ export class KahootJoiner {
       this.gameEndTimer = null;
     }
 
-    const rank = Number(content.rank);
+    const rank = Number(content.rank ?? this.pendingRanking);
     const totalScore = Number(content.totalScore ?? content.score ?? 0);
     const won = rank === 1 || this.podiumMedalType === "gold";
 
@@ -679,22 +710,30 @@ export class KahootJoiner {
       if (!this.closed && runId === this.runId && this.pendingGameEnd) {
         this.reportGameEnd(this.pendingGameEnd);
       }
-    }, 2500);
+    }, 1200);
   }
 
-  flushGameEndReport(runId) {
-    if (!this.pendingGameEnd || this.gameEndReported) {
-      return;
-    }
+  handleQuizStart(content, runId) {
     if (this.closed || runId !== this.runId) {
       return;
     }
-    this.reportGameEnd(this.pendingGameEnd);
+
+    const title = content.quizTitle || content.quizName || content.title || "";
+    const counts = Array.isArray(content.quizQuestionAnswers) ? content.quizQuestionAnswers : [];
+    if (!title || !counts.length) {
+      return;
+    }
+
+    this.onQuizStart({
+      title,
+      choiceCounts: counts,
+      pin: this.pin,
+    });
   }
 
   handlePlayerMessage(data, runId) {
     const id = playerMessageId(data);
-    const contentStr = typeof data.content === "string" ? data.content : "";
+    const content = parseMessageContent(data);
 
     if (id === 14) {
       if (!this.joined && runId === this.runId && !this.closed) {
@@ -706,25 +745,27 @@ export class KahootJoiner {
       return;
     }
 
-    if (id === 3 && contentStr) {
-      try {
-        this.pendingGameEnd = JSON.parse(contentStr);
+    if (id === 9) {
+      this.handleQuizStart(content, runId);
+      return;
+    }
+
+    if (id === 3) {
+      if (Object.keys(content).length > 0) {
+        this.pendingGameEnd = content;
         this.scheduleGameEndReport(runId);
-      } catch {
-        // ignore
       }
       return;
     }
 
-    if (id === 13 && contentStr) {
-      try {
-        const podium = JSON.parse(contentStr);
-        if (podium.podiumMedalType) {
-          this.podiumMedalType = podium.podiumMedalType;
-        }
-        this.flushGameEndReport(runId);
-      } catch {
-        // ignore
+    if (id === 13) {
+      if (content.podiumMedalType) {
+        this.podiumMedalType = content.podiumMedalType;
+      }
+      if (this.pendingGameEnd) {
+        this.reportGameEnd(this.pendingGameEnd);
+      } else if (Object.keys(content).length > 0) {
+        this.reportGameEnd(content);
       }
       return;
     }
@@ -742,12 +783,8 @@ export class KahootJoiner {
       return;
     }
 
-    if (contentStr) {
-      try {
-        this.updateQuestionState(JSON.parse(contentStr), id);
-      } catch {
-        // ignore
-      }
+    if (Object.keys(content).length > 0) {
+      this.updateQuestionState(content, id);
     }
 
     if (id === 8) {
@@ -757,21 +794,18 @@ export class KahootJoiner {
         clearTimeout(this.answerTimer);
         this.answerTimer = null;
       }
-      if (contentStr) {
-        try {
-          const endContent = JSON.parse(contentStr);
-          const correctChoices = endContent.correctChoices || endContent.correctAnswers;
-          if (this.activeQuizQuestionIndex >= 0) {
-            rememberCorrectChoices(this.pin, this.activeQuizQuestionIndex, correctChoices);
-          }
-        } catch {
-          // ignore
-        }
+      const correctChoices = content.correctChoices || content.correctAnswers;
+      if (this.activeQuizQuestionIndex >= 0 && Array.isArray(correctChoices) && correctChoices.length) {
+        rememberCorrectChoices(this.pin, this.activeQuizQuestionIndex, correctChoices);
+        this.onLearnedAnswer({
+          pin: this.pin,
+          quizQuestionIndex: this.activeQuizQuestionIndex,
+          correctChoices,
+        });
       }
       return;
     }
 
-    // id 1 = prefetch (awaiting) — store block info, do not answer
     if (id === 1) {
       return;
     }

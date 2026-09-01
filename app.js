@@ -3,10 +3,12 @@ import { generateRandomName, generateUniqueNames } from "./name-generator.js";
 import {
   clearLearnedAnswers,
   clearQuizCache,
+  fetchQuizByTitle,
   getCachedQuizAnswers,
   isValidPin,
   normalizePin,
   prefetchQuizAnswers,
+  rememberCorrectChoices,
 } from "./quiz-answers.js";
 
 const pinInput = document.getElementById("pin");
@@ -31,6 +33,7 @@ let prefetchTimer = null;
 let prefetchRetryTimer = null;
 let lastPrefetchedPin = "";
 let gameEndResults = [];
+let titleFetchPromise = null;
 
 function getPlayerCount() {
   return Math.max(1, Math.min(100, Math.round(Number(countSlider.value))));
@@ -55,9 +58,13 @@ function setStatus(message) {
   statusEl.textContent = message;
 }
 
-function setQuizResult(message) {
+function setQuizResult(message, { winner = false } = {}) {
   quizResultEl.textContent = message;
   quizResultEl.hidden = !message;
+  quizResultEl.classList.toggle("is-winner", winner);
+  if (message) {
+    quizResultEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 }
 
 function updateBatchStatus() {
@@ -108,7 +115,7 @@ function formatPrefetchStatus(pin, quizAnswers) {
     const title = quizAnswers.title ? ` (“${quizAnswers.title}”)` : "";
     return `${quizAnswers.answers.length} answers ready${title} — click Enter when the host starts`;
   }
-  return "Fetching quiz answers in the background… (start the host game if this stays empty)";
+  return "Answers load automatically when the host starts the quiz";
 }
 
 async function refreshPrefetchStatus(pin, { force = false } = {}) {
@@ -187,35 +194,70 @@ function updateQuizEndSummary(activeSession) {
   if (winners.length > 0) {
     const lines = winners.map(
       (winner) =>
-        `${winner.nickname} — rank #${winner.rank ?? 1}, ${winner.totalScore} pts (${winner.correctCount} correct)`,
+        `${winner.nickname} — #${winner.rank ?? 1}, ${winner.totalScore} pts (${winner.correctCount} correct)`,
     );
-    setQuizResult(`Your bot won! ${lines.join(" · ")}`);
+    setQuizResult(`Winner: ${lines.join(" · ")}`, { winner: true });
     setStatus(`Quiz finished — ${finishedCount}/${expected} bots reported`);
+    return;
+  }
+
+  const best = [...gameEndResults].sort((left, right) => {
+    const leftRank = left.rank ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = right.rank ?? Number.MAX_SAFE_INTEGER;
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+    return right.totalScore - left.totalScore;
+  })[0];
+
+  if (!best) {
     return;
   }
 
   if (expected > 0 && finishedCount >= expected) {
-    const best = [...gameEndResults].sort((left, right) => {
-      const leftRank = left.rank ?? Number.MAX_SAFE_INTEGER;
-      const rightRank = right.rank ?? Number.MAX_SAFE_INTEGER;
-      if (leftRank !== rightRank) {
-        return leftRank - rightRank;
-      }
-      return right.totalScore - left.totalScore;
-    })[0];
-
-    if (best) {
-      setQuizResult(
-        `None of your bots won. Best: ${best.nickname} — rank #${best.rank ?? "?"}, ${best.totalScore} pts`,
-      );
-    } else {
-      setQuizResult("Quiz finished — none of your bots won.");
-    }
+    setQuizResult(
+      `Quiz over. Best bot: ${best.nickname} — rank #${best.rank ?? "?"}, ${best.totalScore} pts (${best.correctCount} correct)`,
+    );
     setStatus(`Quiz finished — ${finishedCount}/${expected} bots reported`);
     return;
   }
 
+  setQuizResult(
+    `Results coming in… Best so far: ${best.nickname} — rank #${best.rank ?? "?"}, ${best.totalScore} pts`,
+  );
   setStatus(`Quiz ending… ${finishedCount}/${expected || "?"} bots reported`);
+}
+
+async function applyQuizAnswersToAll(joinersList, quizAnswers) {
+  if (!quizAnswers?.answers?.length) {
+    return;
+  }
+  for (const joiner of joinersList) {
+    joiner.applyQuizAnswers(quizAnswers);
+  }
+}
+
+async function loadQuizAnswersByTitle(pin, title, choiceCounts, activeSession) {
+  if (!title || !choiceCounts?.length) {
+    return null;
+  }
+
+  const cached = getCachedQuizAnswers(pin);
+  if (cached?.answers?.length) {
+    return cached;
+  }
+
+  if (!titleFetchPromise) {
+    titleFetchPromise = fetchQuizByTitle(title, choiceCounts, pin).finally(() => {
+      titleFetchPromise = null;
+    });
+  }
+
+  const fetched = await titleFetchPromise;
+  if (activeSession !== session) {
+    return null;
+  }
+  return fetched;
 }
 
 async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
@@ -224,7 +266,6 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
 
   if (autoAnswer) {
     if (!quizAnswers?.answers?.length) {
-      setStatus("Loading quiz answers…");
       quizAnswers = await prefetchQuizAnswers(pin, { force: true });
     }
     if (activeSession !== session) {
@@ -233,7 +274,7 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
     if (quizAnswers?.answers?.length) {
       setStatus(`Loaded ${quizAnswers.answers.length} answers — joining ${nicknames.length} players…`);
     } else {
-      setStatus(`Quiz answers unavailable — joining ${nicknames.length} players (random guesses)…`);
+      setStatus(`Joining ${nicknames.length} players — answers load when the host starts the quiz…`);
     }
   }
 
@@ -278,10 +319,42 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
         if (activeSession !== session) {
           return;
         }
-        if (!gameEndResults.some((entry) => entry.nickname === result.nickname)) {
-          gameEndResults.push(result);
+        const existingIndex = gameEndResults.findIndex((entry) => entry.nickname === result.nickname);
+        if (existingIndex >= 0) {
+          const existing = gameEndResults[existingIndex];
+          if (!existing.won && result.won) {
+            gameEndResults[existingIndex] = result;
+            updateQuizEndSummary(activeSession);
+          }
+          return;
         }
+        gameEndResults.push(result);
         updateQuizEndSummary(activeSession);
+      },
+      onQuizStart: async ({ title, choiceCounts, pin: quizPin }) => {
+        if (activeSession !== session || !autoAnswer) {
+          return;
+        }
+
+        const fetched = await loadQuizAnswersByTitle(quizPin, title, choiceCounts, activeSession);
+        if (activeSession !== session) {
+          return;
+        }
+
+        if (fetched?.answers?.length) {
+          quizAnswers = fetched;
+          await applyQuizAnswersToAll(joiners, fetched);
+          setStatus(`Smart mode: ${fetched.answers.length} answers loaded for “${title}”`);
+          return;
+        }
+
+        setStatus(`Playing “${title}” — learning answers as they’re revealed`);
+      },
+      onLearnedAnswer: ({ pin: learnedPin, quizQuestionIndex, correctChoices }) => {
+        if (activeSession !== session) {
+          return;
+        }
+        rememberCorrectChoices(learnedPin, quizQuestionIndex, correctChoices);
       },
     });
 
