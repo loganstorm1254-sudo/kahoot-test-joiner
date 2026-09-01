@@ -406,7 +406,7 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
         }
         if (
           targetCount === 1 ||
-          /Smart mode|Looking up|known answer|learn answers|Private quiz/i.test(message)
+          /Smart mode|Looking up|known answer|wikipedia|learn answers|Private quiz/i.test(message)
         ) {
           setImportantStatus(message);
         }

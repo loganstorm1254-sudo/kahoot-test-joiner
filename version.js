@@ -1,1 +1,1 @@
-export const CLIENT_BUILD = "reliable-answer-v7";
+export const CLIENT_BUILD = "wikipedia-v8";

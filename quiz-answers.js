@@ -2,6 +2,8 @@ const learnedAnswersByPin = new Map();
 const cacheByPin = new Map();
 const cacheByTitle = new Map();
 const inflight = new Map();
+const wikipediaCache = new Map();
+const wikipediaInflight = new Map();
 
 export function normalizePin(pin) {
   return String(pin || "").replace(/\s+/g, "");
@@ -165,6 +167,65 @@ export function prefetchQuizAnswers(pin, { force = false } = {}) {
   });
 
   inflight.set(inflightKey, promise);
+  return promise;
+}
+
+function wikipediaCacheKey(question, choices) {
+  return `${normalizeTitle(question)}::${choices.map((choice) => normalizeTitle(choice)).join("|")}`;
+}
+
+export function prefetchWikipediaAnswer(question, choices) {
+  return lookupWikipediaAnswer(question, choices, { timeoutMs: 5000 });
+}
+
+export function lookupWikipediaAnswer(question, choices, { timeoutMs = 1800 } = {}) {
+  const labels = (choices || []).map((choice) => String(choice || "").trim()).filter(Boolean);
+  if (!String(question || "").trim() || labels.length < 2) {
+    return Promise.resolve(null);
+  }
+
+  const cacheKey = wikipediaCacheKey(question, labels);
+  if (wikipediaCache.has(cacheKey)) {
+    return wikipediaCache.get(cacheKey);
+  }
+  if (wikipediaInflight.has(cacheKey)) {
+    return wikipediaInflight.get(cacheKey);
+  }
+
+  const params = new URLSearchParams({
+    question: String(question).trim(),
+    choices: JSON.stringify(labels),
+  });
+
+  const promise = Promise.race([
+    fetch(`/api/wikipedia?${params.toString()}`)
+      .then((response) => response.json().catch(() => ({})))
+      .then((data) => {
+        const choiceIndex = Number(data?.choiceIndex);
+        if (!Number.isFinite(choiceIndex) || choiceIndex < 0 || choiceIndex >= labels.length) {
+          return null;
+        }
+        return {
+          choiceIndex,
+          textAnswer: data?.textAnswer || labels[choiceIndex],
+          confidence: Number(data?.confidence) || 0,
+          source: data?.source || "wikipedia",
+        };
+      })
+      .catch(() => null),
+    new Promise((resolve) => {
+      setTimeout(() => resolve(null), timeoutMs);
+    }),
+  ])
+    .then((result) => {
+      wikipediaCache.set(cacheKey, Promise.resolve(result));
+      return result;
+    })
+    .finally(() => {
+      wikipediaInflight.delete(cacheKey);
+    });
+
+  wikipediaInflight.set(cacheKey, promise);
   return promise;
 }
 

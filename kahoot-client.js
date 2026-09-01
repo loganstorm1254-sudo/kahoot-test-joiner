@@ -1,4 +1,10 @@
-import { getLearnedCorrectIndices, rememberCorrectChoices, resolveChoice } from "./quiz-answers.js";
+import {
+  getLearnedCorrectIndices,
+  lookupWikipediaAnswer,
+  prefetchWikipediaAnswer,
+  rememberCorrectChoices,
+  resolveChoice,
+} from "./quiz-answers.js";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -251,6 +257,7 @@ export class KahootJoiner {
     this.reconnectAttempts = 0;
     this.answerWatchdog = null;
     this.sessionJoined = false;
+    this.answeringBlockIndex = -1;
   }
 
   applyQuizAnswers(quizAnswers) {
@@ -494,7 +501,7 @@ export class KahootJoiner {
     if (this.closed || runId !== this.runId) {
       return false;
     }
-    if (this.lastAnsweredIndex === questionIndex) {
+    if (this.lastAnsweredIndex === questionIndex || this.answeringBlockIndex === questionIndex) {
       return false;
     }
     if (this.currentQuestionIndex !== questionIndex) {
@@ -504,14 +511,68 @@ export class KahootJoiner {
       return false;
     }
 
+    this.answeringBlockIndex = questionIndex;
+    this.buildAndSendAnswer(runId, questionIndex, questionType, numChoices)
+      .catch(() => {})
+      .finally(() => {
+        if (this.answeringBlockIndex === questionIndex) {
+          this.answeringBlockIndex = -1;
+        }
+      });
+    return true;
+  }
+
+  getQuestionEntry() {
+    const blockIndex = this.currentQuestionIndex;
+    const quizIndex =
+      this.activeQuizQuestionIndex >= 0
+        ? this.activeQuizQuestionIndex
+        : this.currentQuestionIndex;
+
+    return (
+      this.quizAnswers?.answersByBlockIndex?.[blockIndex] ||
+      this.quizAnswers?.answers?.[quizIndex] ||
+      null
+    );
+  }
+
+  canUseWikipedia() {
+    if (this.hasKnownAnswer()) {
+      return false;
+    }
+    const entry = this.getQuestionEntry();
+    return Boolean(entry?.question && entry?.choiceLabels?.length >= 2);
+  }
+
+  prefetchWikipediaForCurrentQuestion() {
+    const entry = this.getQuestionEntry();
+    if (!entry?.question || entry.choiceLabels.length < 2 || this.hasKnownAnswer()) {
+      return;
+    }
+    prefetchWikipediaAnswer(entry.question, entry.choiceLabels);
+  }
+
+  async buildAndSendAnswer(runId, questionIndex, questionType, numChoices) {
     const shared = this.getSharedQuizAnswers?.();
     if (shared) {
       this.applyQuizAnswers(shared);
     }
 
+    const { choice, mode } = await this.buildSmartChoice(questionType, numChoices);
+
+    if (
+      this.closed ||
+      runId !== this.runId ||
+      this.currentQuestionIndex !== questionIndex ||
+      this.lastAnsweredIndex === questionIndex
+    ) {
+      return;
+    }
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
     this.lastAnsweredIndex = questionIndex;
-    const choice = this.buildSmartChoice(questionType, numChoices);
-    const mode = this.hasKnownAnswer() ? "known answer" : "guess";
     this.status(
       `Answering block ${questionIndex} → ${typeof choice === "number" ? `choice ${choice + 1}` : choice} (${mode})`,
     );
@@ -523,7 +584,63 @@ export class KahootJoiner {
         }
       }, 50);
     }
-    return true;
+  }
+
+  async buildSmartChoice(type, numChoices) {
+    const quizIndex =
+      this.activeQuizQuestionIndex >= 0
+        ? this.activeQuizQuestionIndex
+        : this.currentQuestionIndex;
+    const blockIndex = this.currentQuestionIndex;
+
+    if (type === "open_ended" || type === "word_cloud") {
+      const textAnswers = this.quizAnswers?.answers?.[quizIndex]?.textAnswers;
+      if (Array.isArray(textAnswers) && textAnswers.length > 0) {
+        return { choice: textAnswers[Math.floor(Math.random() * textAnswers.length)], mode: "known answer" };
+      }
+
+      const entry = this.getQuestionEntry();
+      if (entry?.question) {
+        const wiki = await lookupWikipediaAnswer(entry.question, entry.choiceLabels || []);
+        if (wiki?.textAnswer) {
+          return { choice: wiki.textAnswer, mode: "wikipedia" };
+        }
+      }
+
+      return {
+        choice: ["idk", "hello", "yes", "ok", "maybe", "hmm", "lol", "hi"][
+          Math.floor(Math.random() * 8)
+        ],
+        mode: "guess",
+      };
+    }
+
+    if (this.hasKnownAnswer()) {
+      return {
+        choice: resolveChoice(
+          type,
+          numChoices,
+          quizIndex,
+          this.quizAnswers,
+          this.pin,
+          blockIndex,
+        ),
+        mode: "known answer",
+      };
+    }
+
+    const entry = this.getQuestionEntry();
+    if (entry?.question && entry?.choiceLabels?.length >= 2) {
+      const wiki = await lookupWikipediaAnswer(entry.question, entry.choiceLabels);
+      if (wiki?.choiceIndex != null && wiki.choiceIndex >= 0 && wiki.choiceIndex < numChoices) {
+        return { choice: wiki.choiceIndex, mode: "wikipedia" };
+      }
+    }
+
+    return {
+      choice: resolveChoice(type, numChoices, quizIndex, this.quizAnswers, this.pin, blockIndex),
+      mode: "guess",
+    };
   }
 
   nextId() {
@@ -654,32 +771,6 @@ export class KahootJoiner {
   sendTwoFactorAuth() {
     const sequence = shuffle([0, 1, 2, 3]).join("");
     this.sendControllerMessage(50, JSON.stringify({ sequence }));
-  }
-
-  buildSmartChoice(type, numChoices) {
-    const quizIndex =
-      this.activeQuizQuestionIndex >= 0
-        ? this.activeQuizQuestionIndex
-        : this.currentQuestionIndex;
-
-    if (type === "open_ended" || type === "word_cloud") {
-      const textAnswers = this.quizAnswers?.answers?.[quizIndex]?.textAnswers;
-      if (Array.isArray(textAnswers) && textAnswers.length > 0) {
-        return textAnswers[Math.floor(Math.random() * textAnswers.length)];
-      }
-      return ["idk", "hello", "yes", "ok", "maybe", "hmm", "lol", "hi"][
-        Math.floor(Math.random() * 8)
-      ];
-    }
-
-    return resolveChoice(
-      type,
-      numChoices,
-      quizIndex,
-      this.quizAnswers,
-      this.pin,
-      this.currentQuestionIndex,
-    );
   }
 
   hasKnownAnswer() {
@@ -816,7 +907,11 @@ export class KahootJoiner {
     const questionIndex = this.currentQuestionIndex;
     const questionType = this.currentQuestionType;
     const numChoices = Math.max(this.currentNumChoices || 4, 1);
-    const answerDelay = 30 + Math.floor(Math.random() * 90);
+    const answerDelay = this.hasKnownAnswer()
+      ? 30 + Math.floor(Math.random() * 90)
+      : this.canUseWikipedia()
+        ? 700 + Math.floor(Math.random() * 500)
+        : 30 + Math.floor(Math.random() * 90);
 
     this.clearAnswerTimers();
 
@@ -1022,6 +1117,7 @@ export class KahootJoiner {
     if (id === 8) {
       this.questionActive = false;
       this.lastAnsweredIndex = -1;
+      this.answeringBlockIndex = -1;
       this.clearAnswerTimers();
       const correctChoices = extractCorrectChoices(content);
       if (Array.isArray(correctChoices) && correctChoices.length) {
@@ -1039,6 +1135,9 @@ export class KahootJoiner {
     if (id === 1) {
       if (!this.quizAnswers) {
         this.maybeRequestQuizAnswers(content, runId);
+      }
+      if (this.autoAnswer) {
+        this.prefetchWikipediaForCurrentQuestion();
       }
       return;
     }

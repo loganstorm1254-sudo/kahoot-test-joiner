@@ -81,11 +81,17 @@ function extractAnswers(questions) {
       }
     }
 
+    const choiceLabels = choices
+      .map((choice) => stripHtml(choice.answer || choice.text || choice.label || ""))
+      .filter(Boolean);
+
     const entry = {
       type,
       layout: question.layout || question.questionFormat || "",
       numChoices: choices.length || question.numberOfAnswers || 4,
       correctIndices,
+      question: stripHtml(question.question || question.title || question.description || ""),
+      choiceLabels,
       textAnswers: choices
         .filter((choice) => choice?.correct && choice?.answer)
         .map((choice) => stripHtml(choice.answer))

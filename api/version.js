@@ -21,7 +21,7 @@ export async function GET() {
       fullSha: sha,
       label: `build ${shortSha}`,
       deployedAt,
-      features: ["reliable-answer-v7", "version-checker"],
+      features: ["wikipedia-v8", "reliable-answer-v7", "version-checker"],
     },
     { headers: corsHeaders() },
   );
