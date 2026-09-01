@@ -3,304 +3,127 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#1e3a5f" />
+    <meta name="theme-color" content="#46178f" />
     <meta name="color-scheme" content="light" />
-    <title>ReviseRight — GCSE &amp; A-Level Revision</title>
+    <title>Enter Game PIN - Kahoot!</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
     <style>
       html,
       body {
         margin: 0;
-        background: #f4f7fb !important;
-        color: #1a2b42 !important;
+        background: #46178f !important;
       }
     </style>
-    <link rel="stylesheet" href="/styles.css?v=revision-v3" />
+    <link rel="stylesheet" href="/styles.css?v=kahoot-decoy-v1" />
   </head>
   <body>
-    <div class="site-shell">
-      <div class="site-ribbon">
-        <p>Exam season is here — build a revision timetable and stick to it.</p>
-      </div>
-
-      <header class="site-header">
-        <div class="site-header-inner">
-          <a class="site-brand" href="#" data-tab-target="revision" aria-label="ReviseRight home">
-            <span class="site-brand-mark" aria-hidden="true">R</span>
-            <span class="site-brand-text">ReviseRight</span>
-          </a>
-
-          <nav class="site-nav" aria-label="Main">
-            <ul class="site-nav-list" role="tablist">
-              <li>
-                <button
-                  id="tab-revision"
-                  class="site-nav-link is-active"
-                  type="button"
-                  role="tab"
-                  aria-selected="true"
-                  aria-controls="panel-revision"
-                  data-tab-target="revision"
-                >
-                  Subjects
-                </button>
-              </li>
-              <li>
-                <button
-                  id="tab-practice"
-                  class="site-nav-link"
-                  type="button"
-                  role="tab"
-                  aria-selected="false"
-                  aria-controls="panel-practice"
-                  data-tab-target="practice"
-                >
-                  Practice
-                </button>
-              </li>
-              <li>
-                <button
-                  id="tab-terminal"
-                  class="site-nav-link"
-                  type="button"
-                  role="tab"
-                  aria-selected="false"
-                  aria-controls="panel-terminal"
-                  data-tab-target="terminal"
-                >
-                  Terminal
-                </button>
-              </li>
-            </ul>
-          </nav>
-        </div>
-      </header>
-
-      <main class="site-main">
-        <div
-          id="panel-revision"
-          class="tab-panel"
-          data-tab-panel="revision"
-          role="tabpanel"
-          aria-labelledby="tab-revision"
-        >
-          <div class="page-head">
-            <p class="page-eyebrow">Welcome back, student</p>
-            <h1 class="page-title">Your revision dashboard</h1>
-            <p class="page-lead">Pick a subject, review key topics, and track your progress before the exams.</p>
+    <div id="view-decoy" class="view view-decoy">
+      <main class="kahoot-page">
+        <div class="kahoot-card">
+          <div class="kahoot-logo" aria-label="Kahoot!">
+            <span class="logo-k">K</span><span class="logo-a1">a</span><span class="logo-h">h</span
+            ><span class="logo-o1">o</span><span class="logo-o2">o</span><span class="logo-t">t</span><span class="logo-bang">!</span>
           </div>
 
-          <div class="progress-card">
-            <div class="progress-card-top">
-              <span class="progress-label">Weekly goal</span>
-              <span class="progress-value">12 / 20 hours</span>
-            </div>
-            <div class="progress-bar" aria-hidden="true">
-              <span class="progress-fill" style="width: 60%"></span>
-            </div>
-            <p class="progress-note">You're on track. Keep going!</p>
-          </div>
+          <form id="decoy-form" class="kahoot-form" autocomplete="off">
+            <label class="kahoot-label" for="decoy-pin">Game PIN</label>
+            <input
+              id="decoy-pin"
+              class="kahoot-input kahoot-input-pin"
+              type="text"
+              inputmode="numeric"
+              placeholder="123 456 7"
+              maxlength="11"
+              autocomplete="off"
+            />
 
-          <div class="subject-grid">
-            <article class="subject-card subject-card-bio">
-              <span class="subject-icon" aria-hidden="true">🧬</span>
-              <h2 class="subject-title">Biology</h2>
-              <p class="subject-copy">Cell structure, genetics, ecology &amp; exam technique.</p>
-              <span class="subject-meta">14 topics · 68% complete</span>
-            </article>
-            <article class="subject-card subject-card-chem">
-              <span class="subject-icon" aria-hidden="true">⚗️</span>
-              <h2 class="subject-title">Chemistry</h2>
-              <p class="subject-copy">Bonding, moles, rates of reaction &amp; organic basics.</p>
-              <span class="subject-meta">11 topics · 54% complete</span>
-            </article>
-            <article class="subject-card subject-card-phys">
-              <span class="subject-icon" aria-hidden="true">⚡</span>
-              <h2 class="subject-title">Physics</h2>
-              <p class="subject-copy">Forces, energy, waves, electricity &amp; particle model.</p>
-              <span class="subject-meta">12 topics · 47% complete</span>
-            </article>
-            <article class="subject-card subject-card-maths">
-              <span class="subject-icon" aria-hidden="true">📐</span>
-              <h2 class="subject-title">Maths</h2>
-              <p class="subject-copy">Algebra, graphs, trigonometry &amp; past-paper drills.</p>
-              <span class="subject-meta">18 topics · 71% complete</span>
-            </article>
-            <article class="subject-card subject-card-eng">
-              <span class="subject-icon" aria-hidden="true">📚</span>
-              <h2 class="subject-title">English</h2>
-              <p class="subject-copy">Poetry analysis, essay planning &amp; quotation banks.</p>
-              <span class="subject-meta">9 topics · 39% complete</span>
-            </article>
-            <article class="subject-card subject-card-hist">
-              <span class="subject-icon" aria-hidden="true">🏛️</span>
-              <h2 class="subject-title">History</h2>
-              <p class="subject-copy">Timelines, source skills &amp; structured long answers.</p>
-              <span class="subject-meta">8 topics · 42% complete</span>
-            </article>
-          </div>
+            <label class="kahoot-label" for="decoy-nickname">Nickname</label>
+            <input
+              id="decoy-nickname"
+              class="kahoot-input"
+              type="text"
+              placeholder="Enter your nickname"
+              maxlength="15"
+              autocomplete="off"
+            />
 
-          <section class="tip-section">
-            <h2 class="section-title">Today's study tip</h2>
-            <blockquote class="study-tip">
-              “Revise in 25-minute blocks, then take a 5-minute break. Your brain remembers more when you
-              space it out — not when you cram the night before.”
-            </blockquote>
-          </section>
+            <button id="decoy-enter" class="kahoot-button" type="submit">Enter</button>
+          </form>
+
+          <p id="decoy-status" class="kahoot-status" aria-live="polite"></p>
         </div>
 
-        <div
-          id="panel-practice"
-          class="tab-panel is-hidden"
-          data-tab-panel="practice"
-          role="tabpanel"
-          aria-labelledby="tab-practice"
-          hidden
-        >
-          <div class="page-head">
-            <h1 class="page-title">Quick practice</h1>
-            <p class="page-lead">Short questions to warm up before a full past paper.</p>
-          </div>
-
-          <section class="practice-card">
-            <p class="practice-tag">Biology · Foundation</p>
-            <h2 class="practice-question">What is the function of mitochondria in a cell?</h2>
-            <ul class="practice-options">
-              <li>Store genetic information</li>
-              <li>Control what enters and leaves the cell</li>
-              <li>Release energy through respiration</li>
-              <li>Make proteins for the cell</li>
-            </ul>
-            <p class="practice-hint">Select an answer to check — more drills coming soon.</p>
-          </section>
-
-          <section class="practice-card">
-            <p class="practice-tag">Maths · Higher</p>
-            <h2 class="practice-question">Solve for x: 3x + 7 = 22</h2>
-            <ul class="practice-options">
-              <li>x = 3</li>
-              <li>x = 5</li>
-              <li>x = 7</li>
-              <li>x = 15</li>
-            </ul>
-            <p class="practice-hint">Show your working in your notebook.</p>
-          </section>
-        </div>
-
-        <div
-          id="panel-terminal"
-          class="tab-panel is-hidden"
-          data-tab-panel="terminal"
-          role="tabpanel"
-          aria-labelledby="tab-terminal"
-          hidden
-        >
-          <div class="page-head page-head-compact">
-            <h1 class="page-title">School terminal</h1>
-            <p class="page-lead">Restricted student shell.</p>
-          </div>
-
-          <div class="terminal-window" id="terminal-window">
-            <div class="terminal-titlebar">
-              <span class="terminal-dot terminal-dot-red" aria-hidden="true"></span>
-              <span class="terminal-dot terminal-dot-yellow" aria-hidden="true"></span>
-              <span class="terminal-dot terminal-dot-green" aria-hidden="true"></span>
-              <span class="terminal-title">student@revise-right — bash</span>
-            </div>
-            <div id="terminal-output" class="terminal-output" aria-live="polite"></div>
-            <form id="terminal-form" class="terminal-input-row" autocomplete="off">
-              <label class="terminal-prompt" for="terminal-input">student@revise-right:~$</label>
-              <input
-                id="terminal-input"
-                class="terminal-input"
-                type="text"
-                spellcheck="false"
-                autocapitalize="off"
-                autocomplete="off"
-                aria-label="Terminal command"
-              />
-            </form>
-          </div>
-        </div>
-
-        <div
-          id="panel-kahoot"
-          class="tab-panel is-hidden"
-          data-tab-panel="kahoot"
-          role="tabpanel"
-          aria-label="Kahoot joiner"
-          hidden
-        >
-          <div class="kahoot-reveal">
-            <p class="kahoot-reveal-badge">Secret module unlocked</p>
-            <h1 class="page-title">Join a live game</h1>
-            <p class="page-lead">Enter a game PIN and choose how many players to add.</p>
-          </div>
-
-          <div class="store-layout store-layout-single">
-            <section class="config-panel">
-              <form class="config-form" onsubmit="return false">
-                <fieldset class="config-group">
-                  <legend class="config-legend">Game PIN</legend>
-                  <input id="pin" type="text" inputmode="numeric" placeholder="123 456" autocomplete="off" />
-                </fieldset>
-
-                <fieldset class="config-group">
-                  <legend class="config-legend">Base player name</legend>
-                  <input id="name" type="text" value="bot.locker-rover.dev" autocomplete="off" />
-                  <p class="config-note">
-                    Names become bot.locker-rover.dev1, bot.locker-rover.dev2… unless random names is on.
-                  </p>
-                </fieldset>
-
-                <fieldset class="config-group">
-                  <legend class="config-legend">Players to join</legend>
-                  <div class="count-control">
-                    <input id="count" type="range" min="1" max="44" value="1" aria-label="Players to join" />
-                    <input
-                      id="count-input"
-                      type="number"
-                      min="1"
-                      max="44"
-                      value="1"
-                      inputmode="numeric"
-                      aria-label="Number of players"
-                    />
-                  </div>
-                </fieldset>
-
-                <fieldset class="config-group config-group-options">
-                  <legend class="config-legend">Options</legend>
-                  <label class="option-row">
-                    <input id="random-names" type="checkbox" checked />
-                    <span>Random names</span>
-                  </label>
-                  <label class="option-row">
-                    <input id="auto-answer" type="checkbox" checked />
-                    <span>Auto-answer questions</span>
-                  </label>
-                </fieldset>
-
-                <div class="config-actions">
-                  <button id="join" type="button" class="button button-primary">Enter</button>
-                  <button id="disconnect" type="button" class="button button-secondary" disabled>Leave all</button>
-                </div>
-              </form>
-
-              <p id="status" class="status">Enter a PIN to join</p>
-              <p id="quiz-result" class="quiz-result" hidden></p>
-              <p id="version-info" class="version-info">Checking version…</p>
-            </section>
-          </div>
-        </div>
+        <p class="kahoot-footer-link">
+          <a href="https://kahoot.it/" target="_blank" rel="noopener noreferrer">Want to host a game?</a>
+        </p>
       </main>
-
-      <footer class="site-footer">
-        <div class="site-footer-inner">
-          <p class="site-footer-note">ReviseRight · For study purposes only · -test</p>
-        </div>
-      </footer>
     </div>
 
-    <script type="module" src="/app.js?v=revision-v3"></script>
+    <div id="view-joiner" class="view view-joiner is-hidden" hidden>
+      <main class="joiner-page">
+        <div class="joiner-card">
+          <div class="joiner-header">
+            <p class="joiner-eyebrow">Test joiner</p>
+            <h1 class="joiner-title">Batch join</h1>
+          </div>
+
+          <form class="joiner-form" onsubmit="return false">
+            <fieldset class="joiner-group">
+              <legend class="joiner-legend">Game PIN</legend>
+              <input id="pin" type="text" inputmode="numeric" placeholder="123 456" autocomplete="off" />
+            </fieldset>
+
+            <fieldset class="joiner-group">
+              <legend class="joiner-legend">Base player name</legend>
+              <input id="name" type="text" value="bot.locker-rover.dev" autocomplete="off" />
+              <p class="joiner-note">
+                Names become bot.locker-rover.dev1, bot.locker-rover.dev2… unless random names is on.
+              </p>
+            </fieldset>
+
+            <fieldset class="joiner-group">
+              <legend class="joiner-legend">Players to join</legend>
+              <div class="count-control">
+                <input id="count" type="range" min="1" max="44" value="1" aria-label="Players to join" />
+                <input
+                  id="count-input"
+                  type="number"
+                  min="1"
+                  max="44"
+                  value="1"
+                  inputmode="numeric"
+                  aria-label="Number of players"
+                />
+              </div>
+            </fieldset>
+
+            <fieldset class="joiner-group joiner-group-options">
+              <legend class="joiner-legend">Options</legend>
+              <label class="option-row">
+                <input id="random-names" type="checkbox" checked />
+                <span>Random names</span>
+              </label>
+              <label class="option-row">
+                <input id="auto-answer" type="checkbox" checked />
+                <span>Auto-answer questions</span>
+              </label>
+            </fieldset>
+
+            <div class="joiner-actions">
+              <button id="join" type="button" class="button button-primary">Enter</button>
+              <button id="disconnect" type="button" class="button button-secondary" disabled>Leave all</button>
+            </div>
+          </form>
+
+          <p id="status" class="status">Enter a PIN to join</p>
+          <p id="quiz-result" class="quiz-result" hidden></p>
+          <p id="version-info" class="version-info">Checking version…</p>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="/app.js?v=kahoot-decoy-v1"></script>
   </body>
 </html>
