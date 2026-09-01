@@ -175,13 +175,7 @@ export class KahootJoiner {
     this.questionStartTime = 0;
     this.questionActive = false;
     this.twoFactorPending = false;
-    this.ackCounter = 0;
     this.usesGameBlocks = false;
-  }
-
-  getGameId() {
-    const numeric = Number(this.pin);
-    return Number.isFinite(numeric) ? numeric : this.pin;
   }
 
   status(message) {
@@ -391,14 +385,11 @@ export class KahootJoiner {
       return;
     }
     const ext = message.ext || {};
-    if (ext.ack != null) {
-      this.ackCounter = Number(ext.ack) + 1;
-    }
     this.send({
       channel: "/meta/connect",
       connectionType: "websocket",
       ext: {
-        ack: this.ackCounter,
+        ack: ext.ack ?? 0,
         timesync: {
           l: this.timesync.l,
           o: this.timesync.o,
@@ -417,7 +408,7 @@ export class KahootJoiner {
       channel: "/service/controller",
       data: {
         type: "login",
-        gameid: this.getGameId(),
+        gameid: this.pin,
         host: "kahoot.it",
         name: this.nickname,
         content: JSON.stringify({
@@ -436,7 +427,7 @@ export class KahootJoiner {
       data: {
         id: 16,
         type: "message",
-        gameid: this.getGameId(),
+        gameid: this.pin,
         host: "kahoot.it",
         content: JSON.stringify({ usingNamerator: false }),
       },
@@ -451,7 +442,7 @@ export class KahootJoiner {
       data: {
         id: messageId,
         type: "message",
-        gameid: this.getGameId(),
+        gameid: this.pin,
         host: "kahoot.it",
         content,
       },
@@ -612,6 +603,7 @@ export class KahootJoiner {
       if (!this.joined && runId === this.runId && !this.closed) {
         this.joined = true;
         this.readyToPlay = true;
+        this.status(`Joined as ${this.nickname}`);
         this.onJoined(this.nickname);
       }
       return;
@@ -740,10 +732,6 @@ export class KahootJoiner {
 
     this.cid = String(data.cid);
     this.sendNamerator();
-    if (!this.joined) {
-      this.joined = true;
-      this.onJoined(this.nickname);
-    }
     this.readyToPlay = true;
   }
 }
