@@ -2,8 +2,8 @@ const learnedAnswersByPin = new Map();
 const cacheByPin = new Map();
 const cacheByTitle = new Map();
 const inflight = new Map();
-const wikipediaCache = new Map();
-const wikipediaInflight = new Map();
+const searchCache = new Map();
+const searchInflight = new Map();
 
 export function normalizePin(pin) {
   return String(pin || "").replace(/\s+/g, "");
@@ -170,26 +170,26 @@ export function prefetchQuizAnswers(pin, { force = false } = {}) {
   return promise;
 }
 
-function wikipediaCacheKey(question, choices) {
+function searchCacheKey(question, choices) {
   return `${normalizeTitle(question)}::${choices.map((choice) => normalizeTitle(choice)).join("|")}`;
 }
 
-export function prefetchWikipediaAnswer(question, choices) {
-  return lookupWikipediaAnswer(question, choices, { timeoutMs: 5000 });
+export function prefetchSearchAnswer(question, choices) {
+  return lookupSearchAnswer(question, choices, { timeoutMs: 6000 });
 }
 
-export function lookupWikipediaAnswer(question, choices, { timeoutMs = 1800 } = {}) {
+export function lookupSearchAnswer(question, choices, { timeoutMs = 3500 } = {}) {
   const labels = (choices || []).map((choice) => String(choice || "").trim()).filter(Boolean);
   if (!String(question || "").trim() || labels.length < 2) {
     return Promise.resolve(null);
   }
 
-  const cacheKey = wikipediaCacheKey(question, labels);
-  if (wikipediaCache.has(cacheKey)) {
-    return wikipediaCache.get(cacheKey);
+  const cacheKey = searchCacheKey(question, labels);
+  if (searchCache.has(cacheKey)) {
+    return searchCache.get(cacheKey);
   }
-  if (wikipediaInflight.has(cacheKey)) {
-    return wikipediaInflight.get(cacheKey);
+  if (searchInflight.has(cacheKey)) {
+    return searchInflight.get(cacheKey);
   }
 
   const params = new URLSearchParams({
@@ -198,18 +198,27 @@ export function lookupWikipediaAnswer(question, choices, { timeoutMs = 1800 } = 
   });
 
   const promise = Promise.race([
-    fetch(`/api/wikipedia?${params.toString()}`)
+    fetch(`/api/search?${params.toString()}`)
       .then((response) => response.json().catch(() => ({})))
       .then((data) => {
         const choiceIndex = Number(data?.choiceIndex);
         if (!Number.isFinite(choiceIndex) || choiceIndex < 0 || choiceIndex >= labels.length) {
-          return null;
+          return {
+            choiceIndex: null,
+            textAnswer: null,
+            confidence: Number(data?.confidence) || 0,
+            source: data?.source || "google",
+            queries: Array.isArray(data?.queries) ? data.queries : [],
+            snippetCount: Number(data?.snippetCount) || 0,
+          };
         }
         return {
           choiceIndex,
           textAnswer: data?.textAnswer || labels[choiceIndex],
           confidence: Number(data?.confidence) || 0,
-          source: data?.source || "wikipedia",
+          source: data?.source || "google",
+          queries: Array.isArray(data?.queries) ? data.queries : [],
+          snippetCount: Number(data?.snippetCount) || 0,
         };
       })
       .catch(() => null),
@@ -218,14 +227,14 @@ export function lookupWikipediaAnswer(question, choices, { timeoutMs = 1800 } = 
     }),
   ])
     .then((result) => {
-      wikipediaCache.set(cacheKey, Promise.resolve(result));
+      searchCache.set(cacheKey, Promise.resolve(result));
       return result;
     })
     .finally(() => {
-      wikipediaInflight.delete(cacheKey);
+      searchInflight.delete(cacheKey);
     });
 
-  wikipediaInflight.set(cacheKey, promise);
+  searchInflight.set(cacheKey, promise);
   return promise;
 }
 

@@ -6,8 +6,8 @@
     "api/quiz.js": {
       "maxDuration": 30
     },
-    "api/wikipedia.js": {
-      "maxDuration": 15
+    "api/search.js": {
+      "maxDuration": 20
     },
     "api/version.js": {
       "maxDuration": 10

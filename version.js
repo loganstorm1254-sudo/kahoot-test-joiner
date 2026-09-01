@@ -1,1 +1,1 @@
-export const CLIENT_BUILD = "wikipedia-v8";
+export const CLIENT_BUILD = "google-search-v9";
