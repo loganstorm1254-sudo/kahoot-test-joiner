@@ -3,22 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kahoot Test Joiner</title>
+    <title>Kahoot Joiner</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="card">
       <header class="brand">
         <span class="logo">kahoot!</span>
-        <p class="subtitle">Test joiner — for testing only</p>
+        <p class="subtitle">Join extra players to a live game</p>
       </header>
 
       <label for="pin">Game PIN</label>
       <input id="pin" type="text" inputmode="numeric" placeholder="123456" autocomplete="off" />
 
       <label for="name">Base player name</label>
-      <input id="name" type="text" value="test" autocomplete="off" />
-      <p class="hint">Names become test1, test2, test3… unless random names is on</p>
+      <input id="name" type="text" value="bot" autocomplete="off" />
+      <p class="hint">Names become bot1, bot2, bot3… unless random names is on</p>
 
       <div class="count-row">
         <label for="count">Players to join</label>
@@ -43,6 +43,7 @@
       <p id="status" class="status">Enter a PIN to join</p>
       <p id="quiz-result" class="quiz-result" hidden></p>
       <p id="version-info" class="version-info">Checking version…</p>
+      <p class="fineprint">-test</p>
     </main>
 
     <script type="module" src="/app.js"></script>

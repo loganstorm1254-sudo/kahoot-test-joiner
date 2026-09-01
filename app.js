@@ -496,7 +496,7 @@ function onJoin() {
   clearLearnedAnswers(pin);
   stopPrefetchRetryLoop();
 
-  const nicknames = buildNicknames(count, baseName || "test", useRandomNames);
+  const nicknames = buildNicknames(count, baseName || "bot", useRandomNames);
 
   setConnected(true);
   setStatus(`Joining ${count} player${count === 1 ? "" : "s"}...`);
@@ -526,7 +526,7 @@ function onRandomNamesToggle() {
   if (randomNamesCheck.checked) {
     nameInput.placeholder = generateRandomName();
   } else {
-    nameInput.placeholder = "test";
+    nameInput.placeholder = "bot";
   }
 }
 

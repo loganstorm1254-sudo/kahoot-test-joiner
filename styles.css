@@ -209,3 +209,12 @@ button:active:not(:disabled) {
 .version-info.is-current {
   color: #166534;
 }
+
+.fineprint {
+  margin: 6px 0 0;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+}

@@ -204,7 +204,7 @@ export class KahootJoiner {
 
   reset() {
     this.pin = "";
-    this.nickname = "test";
+    this.nickname = "bot";
     this.autoAnswer = false;
     this.onJoined = () => {};
     this.onError = () => {};
@@ -280,7 +280,7 @@ export class KahootJoiner {
     this.reset();
 
     this.pin = pin.trim();
-    this.nickname = nickname.trim() || "test";
+    this.nickname = nickname.trim() || "bot";
     this.autoAnswer = Boolean(autoAnswer);
     this.quizAnswers = quizAnswers || null;
     this.onJoined = onJoined || (() => {});
@@ -568,7 +568,7 @@ export class KahootJoiner {
       if (Array.isArray(textAnswers) && textAnswers.length > 0) {
         return textAnswers[Math.floor(Math.random() * textAnswers.length)];
       }
-      return ["test", "idk", "hello", "yes", "ok", "maybe", "hmm", "lol"][
+      return ["idk", "hello", "yes", "ok", "maybe", "hmm", "lol", "hi"][
         Math.floor(Math.random() * 8)
       ];
     }
