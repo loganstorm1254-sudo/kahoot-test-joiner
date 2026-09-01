@@ -1,1 +1,1 @@
-export const CLIENT_BUILD = "smart-answers-v5";
+export const CLIENT_BUILD = "instant-answer-v6";

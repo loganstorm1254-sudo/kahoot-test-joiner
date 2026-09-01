@@ -21,7 +21,7 @@ export async function GET() {
       fullSha: sha,
       label: `build ${shortSha}`,
       deployedAt,
-      features: ["smart-answers-v5", "version-checker"],
+      features: ["instant-answer-v6", "version-checker"],
     },
     { headers: corsHeaders() },
   );
