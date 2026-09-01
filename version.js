@@ -1,1 +1,1 @@
-export const CLIENT_BUILD = "pin-search-v11";
+export const CLIENT_BUILD = "apple-ui-v12";

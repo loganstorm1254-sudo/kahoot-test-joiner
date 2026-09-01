@@ -21,7 +21,7 @@ export async function GET() {
       fullSha: sha,
       label: `build ${shortSha}`,
       deployedAt,
-      features: ["pin-search-v11", "google-search-v10", "version-checker"],
+      features: ["apple-ui-v12", "pin-search-v11", "version-checker"],
     },
     { headers: corsHeaders() },
   );

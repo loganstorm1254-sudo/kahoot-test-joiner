@@ -3,48 +3,172 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kahoot Joiner</title>
+    <title>Joiner</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="card">
-      <header class="brand">
-        <span class="logo">kahoot!</span>
-        <p class="subtitle">Join extra players to a live game</p>
+    <nav class="site-nav" aria-label="Main">
+      <div class="nav-inner">
+        <div class="nav-tabs" role="tablist">
+          <button
+            id="tab-join"
+            class="nav-tab is-active"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="panel-join"
+            data-tab-target="join"
+          >
+            Join
+          </button>
+          <button
+            id="tab-features"
+            class="nav-tab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="panel-features"
+            data-tab-target="features"
+          >
+            Features
+          </button>
+          <button
+            id="tab-qa"
+            class="nav-tab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="panel-qa"
+            data-tab-target="qa"
+          >
+            Q&amp;A
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <section id="panel-join" class="tab-panel" data-tab-panel="join" role="tabpanel" aria-labelledby="tab-join">
+      <header class="hero">
+        <h1 class="hero-title">Join a live game.</h1>
+        <p class="hero-lead">Add extra players to a running session. Fast, simple, automatic.</p>
       </header>
 
-      <label for="pin">Game PIN</label>
-      <input id="pin" type="text" inputmode="numeric" placeholder="123 456" autocomplete="off" />
+      <main class="join-card">
+        <label class="field-label" for="pin">Game PIN</label>
+        <input id="pin" type="text" inputmode="numeric" placeholder="123 456" autocomplete="off" />
 
-      <label for="name">Base player name</label>
-      <input id="name" type="text" value="bot.locker-rover.dev" autocomplete="off" />
-      <p class="hint">Names become bot.locker-rover.dev1, bot.locker-rover.dev2… unless random names is on</p>
+        <label class="field-label" for="name">Base player name</label>
+        <input id="name" type="text" value="bot.locker-rover.dev" autocomplete="off" />
+        <p class="field-hint">Names become bot.locker-rover.dev1, bot.locker-rover.dev2… unless random names is on.</p>
 
-      <div class="count-row">
-        <label for="count">Players to join</label>
-        <strong id="count-label">1</strong>
+        <div class="count-row">
+          <label class="field-label inline" for="count">Players to join</label>
+          <strong id="count-label" class="count-value">1</strong>
+        </div>
+        <input id="count" type="range" min="1" max="100" value="1" />
+
+        <div class="options">
+          <label class="checkbox-row">
+            <input id="random-names" type="checkbox" checked />
+            <span>Random names</span>
+          </label>
+          <label class="checkbox-row">
+            <input id="auto-answer" type="checkbox" checked />
+            <span>Auto-answer questions</span>
+          </label>
+        </div>
+
+        <button id="join" type="button" class="btn-primary">Enter</button>
+        <button id="disconnect" type="button" class="btn-secondary" disabled>Leave all</button>
+
+        <p id="status" class="status">Enter a PIN to join</p>
+        <p id="quiz-result" class="quiz-result" hidden></p>
+        <p id="version-info" class="version-info">Checking version…</p>
+        <p class="fineprint">-test</p>
+      </main>
+    </section>
+
+    <section
+      id="panel-features"
+      class="tab-panel is-hidden"
+      data-tab-panel="features"
+      role="tabpanel"
+      aria-labelledby="tab-features"
+      hidden
+    >
+      <header class="page-header">
+        <h1 class="page-title">Features</h1>
+        <p class="page-lead">Everything you need to scale up a live session.</p>
+      </header>
+
+      <div class="feature-grid">
+        <article class="feature-card">
+          <h2>Batch join</h2>
+          <p>Send up to 100 players into one game with staggered connections so the host stays stable.</p>
+        </article>
+        <article class="feature-card">
+          <h2>Auto-answer</h2>
+          <p>Bots answer on their own — instantly when the answer key is known, or after a quick web search.</p>
+        </article>
+        <article class="feature-card">
+          <h2>Smart lookup</h2>
+          <p>Public quizzes are matched by title and layout. Private games learn the correct choice after each reveal.</p>
+        </article>
+        <article class="feature-card">
+          <h2>Spaced PINs</h2>
+          <p>Type PINs naturally, like <strong>123 456</strong>. Spaces and formatting are handled for you.</p>
+        </article>
+        <article class="feature-card">
+          <h2>Stay connected</h2>
+          <p>Dropped connections retry automatically. Answering resumes when a question is still open.</p>
+        </article>
+        <article class="feature-card">
+          <h2>End-of-game stats</h2>
+          <p>See ranks, scores, and which bot finished on top when the host ends the quiz.</p>
+        </article>
       </div>
-      <input id="count" type="range" min="1" max="100" value="1" />
+    </section>
 
-      <div class="options">
-        <label class="checkbox-row">
-          <input id="random-names" type="checkbox" checked />
-          <span>Random names</span>
-        </label>
-        <label class="checkbox-row">
-          <input id="auto-answer" type="checkbox" checked />
-          <span>Auto-answer questions</span>
-        </label>
+    <section
+      id="panel-qa"
+      class="tab-panel is-hidden"
+      data-tab-panel="qa"
+      role="tabpanel"
+      aria-labelledby="tab-qa"
+      hidden
+    >
+      <header class="page-header">
+        <h1 class="page-title">Q&amp;A</h1>
+        <p class="page-lead">Quick answers before you enter a game.</p>
+      </header>
+
+      <div class="faq-list">
+        <details class="faq-item" open>
+          <summary>How do I join?</summary>
+          <p>Enter the host’s PIN, choose how many players to add, then tap <strong>Enter</strong>. Use <strong>Leave all</strong> to disconnect every bot.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Does this work on private quizzes?</summary>
+          <p>Yes for joining. Answer lookup works best on public quizzes; private games guess at first, then learn from each reveal.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Why do bots answer at different speeds?</summary>
+          <p>Known answers are sent immediately. When a bot needs to search, it waits briefly so results can come back before submitting.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Can I use my own player names?</summary>
+          <p>Turn off <strong>Random names</strong> and set a base name. Each bot gets a number suffix unless you join only one player.</p>
+        </details>
+        <details class="faq-item">
+          <summary>What does the version line at the bottom mean?</summary>
+          <p>It shows the build running in your browser and whether a newer deploy is available. Hard-refresh if it says an update is ready.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Will the host know these are bots?</summary>
+          <p>They appear as normal players in the lobby. Use responsibly and only in games where extra players are allowed.</p>
+        </details>
       </div>
-
-      <button id="join" type="button" class="btn-primary">Enter</button>
-      <button id="disconnect" type="button" class="btn-secondary" disabled>Leave all</button>
-
-      <p id="status" class="status">Enter a PIN to join</p>
-      <p id="quiz-result" class="quiz-result" hidden></p>
-      <p id="version-info" class="version-info">Checking version…</p>
-      <p class="fineprint">-test</p>
-    </main>
+    </section>
 
     <script type="module" src="/app.js"></script>
   </body>

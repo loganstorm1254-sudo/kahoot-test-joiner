@@ -563,6 +563,29 @@ pinInput.addEventListener("blur", onPinInput);
 joinButton.addEventListener("click", onJoin);
 disconnectButton.addEventListener("click", onDisconnect);
 
+function setActiveTab(name) {
+  const tabButtons = document.querySelectorAll("[data-tab-target]");
+  const tabPanels = document.querySelectorAll("[data-tab-panel]");
+
+  for (const button of tabButtons) {
+    const isActive = button.dataset.tabTarget === name;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  }
+
+  for (const panel of tabPanels) {
+    const isActive = panel.dataset.tabPanel === name;
+    panel.classList.toggle("is-hidden", !isActive);
+    panel.hidden = !isActive;
+  }
+}
+
+for (const button of document.querySelectorAll("[data-tab-target]")) {
+  button.addEventListener("click", () => {
+    setActiveTab(button.dataset.tabTarget);
+  });
+}
+
 updateCountLabel();
 onRandomNamesToggle();
 startPrefetchRetryLoop();
