@@ -4,9 +4,20 @@ Browser-based Kahoot test joiner — join multiple fake players to a live game f
 
 **For testing only.**
 
+## Push to GitHub
+
+Install the GitHub CLI if needed, then authenticate and create the repo:
+
+```bash
+cd /Users/loganstorm/Untitled/kahoot-test-joiner-vercel
+brew install gh   # or download from https://cli.github.com
+gh auth login
+gh repo create kahoot-test-joiner --public --source=. --remote=origin --push
+```
+
 ## Deploy to Vercel
 
-1. Push this repo to GitHub
+1. Push this repo to GitHub (see above)
 2. Go to [vercel.com/new](https://vercel.com/new)
 3. Import the repo
 4. Deploy (no env vars needed)
