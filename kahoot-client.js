@@ -164,6 +164,39 @@ function parseMessageContent(data) {
   }
 }
 
+function extractQuizMetadata(content) {
+  return {
+    title:
+      content.quizName ||
+      content.quizTitle ||
+      content.name ||
+      content.title ||
+      content.kahootTitle ||
+      "",
+    quizId: content.quizId || content.quizUuid || content.uuid || content.kahootId || "",
+    choiceCounts: Array.isArray(content.quizQuestionAnswers) ? content.quizQuestionAnswers : [],
+  };
+}
+
+function extractCorrectChoices(content) {
+  if (Array.isArray(content.correctChoices) && content.correctChoices.length) {
+    return content.correctChoices;
+  }
+  if (Array.isArray(content.correctAnswers) && content.correctAnswers.length) {
+    return content.correctAnswers;
+  }
+  if (content.correctAnswer != null) {
+    return [Number(content.correctAnswer)];
+  }
+  if (content.correctIndex != null) {
+    return [Number(content.correctIndex)];
+  }
+  if (content.isCorrect && content.choice != null) {
+    return Array.isArray(content.choice) ? content.choice : [content.choice];
+  }
+  return null;
+}
+
 export class KahootJoiner {
   constructor() {
     this.reset();
@@ -217,7 +250,10 @@ export class KahootJoiner {
   }
 
   applyQuizAnswers(quizAnswers) {
-    if (quizAnswers?.answers?.length || quizAnswers?.answersByBlockIndex?.length) {
+    const hasBlockAnswers = Array.isArray(quizAnswers?.answersByBlockIndex)
+      ? quizAnswers.answersByBlockIndex.some((entry) => entry?.correctIndices?.length)
+      : false;
+    if (quizAnswers?.answers?.length || hasBlockAnswers) {
       this.quizAnswers = quizAnswers;
     }
   }
@@ -226,7 +262,20 @@ export class KahootJoiner {
     this.onStatus(message);
   }
 
-  start({ pin, nickname, autoAnswer, onJoined, onError, onStatus, onGameEnd, onQuizStart, onLearnedAnswer, quizAnswers }) {
+  start({
+    pin,
+    nickname,
+    autoAnswer,
+    onJoined,
+    onError,
+    onStatus,
+    onGameEnd,
+    onQuizStart,
+    onLearnedAnswer,
+    quizAnswers,
+    waitForQuizAnswers,
+    getSharedQuizAnswers,
+  }) {
     this.stop(false);
     this.reset();
 
@@ -240,6 +289,8 @@ export class KahootJoiner {
     this.onGameEnd = onGameEnd || (() => {});
     this.onQuizStart = onQuizStart || (() => {});
     this.onLearnedAnswer = onLearnedAnswer || (() => {});
+    this.waitForQuizAnswers = waitForQuizAnswers || (() => Promise.resolve(null));
+    this.getSharedQuizAnswers = getSharedQuizAnswers || (() => null);
 
     this.runId += 1;
     const runId = this.runId;
@@ -681,12 +732,26 @@ export class KahootJoiner {
           }
 
           if (!this.hasKnownAnswer()) {
-            const deadline = Date.now() + 5000;
+            const deadline = Date.now() + 25000;
             while (!this.hasKnownAnswer() && Date.now() < deadline) {
               if (this.closed || runId !== this.runId || !this.questionActive) {
                 return;
               }
-              await new Promise((resolve) => setTimeout(resolve, 120));
+              try {
+                await Promise.race([
+                  this.waitForQuizAnswers(),
+                  new Promise((resolve) => setTimeout(resolve, 400)),
+                ]);
+              } catch {
+                // ignore lookup errors
+              }
+              const shared = this.getSharedQuizAnswers?.();
+              if (shared) {
+                this.applyQuizAnswers(shared);
+              }
+              if (!this.hasKnownAnswer()) {
+                await new Promise((resolve) => setTimeout(resolve, 200));
+              }
             }
           }
 
@@ -757,22 +822,17 @@ export class KahootJoiner {
       return;
     }
 
-    const counts = Array.isArray(content.quizQuestionAnswers)
-      ? content.quizQuestionAnswers
-      : this.liveChoiceCounts;
+    const metadata = extractQuizMetadata({
+      ...content,
+      quizQuestionAnswers: content.quizQuestionAnswers || this.liveChoiceCounts,
+      quizName: content.quizName || this.liveQuizTitle,
+      quizId: content.quizId || this.liveQuizId,
+    });
+    const { title, quizId, choiceCounts: counts } = metadata;
+
     if (!counts.length) {
       return;
     }
-
-    const title =
-      this.liveQuizTitle ||
-      content.name ||
-      content.quizName ||
-      content.quizTitle ||
-      content.title ||
-      "";
-    const quizId =
-      this.liveQuizId || content.quizId || content.quizUuid || content.uuid || "";
 
     this.liveChoiceCounts = counts;
     if (title) {
@@ -780,6 +840,12 @@ export class KahootJoiner {
     }
     if (quizId) {
       this.liveQuizId = quizId;
+    }
+
+    const shared = this.getSharedQuizAnswers?.();
+    if (shared) {
+      this.applyQuizAnswers(shared);
+      return;
     }
 
     this.quizLookupStarted = true;
@@ -796,24 +862,21 @@ export class KahootJoiner {
       return;
     }
 
-    const title =
-      content.name ||
-      content.quizTitle ||
-      content.quizName ||
-      content.title ||
-      "";
-    const quizId = content.quizId || content.quizUuid || content.uuid || "";
-    const counts = Array.isArray(content.quizQuestionAnswers) ? content.quizQuestionAnswers : [];
-
-    this.liveQuizTitle = title || this.liveQuizTitle;
-    this.liveQuizId = quizId || this.liveQuizId;
-    this.liveChoiceCounts = counts.length ? counts : this.liveChoiceCounts;
+    const metadata = extractQuizMetadata(content);
+    if (metadata.title) {
+      this.liveQuizTitle = metadata.title;
+    }
+    if (metadata.quizId) {
+      this.liveQuizId = metadata.quizId;
+    }
+    if (metadata.choiceCounts.length) {
+      this.liveChoiceCounts = metadata.choiceCounts;
+    }
 
     this.maybeRequestQuizAnswers(
       {
         ...content,
-        name: title,
-        quizId,
+        ...metadata,
         quizQuestionAnswers: this.liveChoiceCounts,
       },
       runId,
@@ -831,6 +894,7 @@ export class KahootJoiner {
         this.status(`Joined as ${this.nickname}`);
         this.onJoined(this.nickname);
       }
+      this.maybeRequestQuizAnswers(content, runId);
       return;
     }
 
@@ -883,8 +947,8 @@ export class KahootJoiner {
         clearTimeout(this.answerTimer);
         this.answerTimer = null;
       }
-      const correctChoices = content.correctChoices || content.correctAnswers;
-      if (this.activeQuizQuestionIndex >= 0 && Array.isArray(correctChoices) && correctChoices.length) {
+      const correctChoices = extractCorrectChoices(content);
+      if (Array.isArray(correctChoices) && correctChoices.length) {
         const learnedIndex = this.currentQuestionIndex;
         rememberCorrectChoices(this.pin, learnedIndex, correctChoices);
         this.onLearnedAnswer({
@@ -897,7 +961,7 @@ export class KahootJoiner {
     }
 
     if (id === 1) {
-      if (content.quizQuestionAnswers?.length && !this.quizAnswers) {
+      if (!this.quizAnswers) {
         this.maybeRequestQuizAnswers(content, runId);
       }
       return;

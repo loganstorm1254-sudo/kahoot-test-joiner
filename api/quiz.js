@@ -334,8 +334,9 @@ async function collectCandidates(queries, title, choiceCounts) {
 async function pickMatchingQuiz(candidates, choiceCounts, title, source) {
   const exactMatches = [];
   const layoutMatches = [];
+  const limited = candidates.slice(0, 12);
 
-  for (const candidate of candidates) {
+  for (const candidate of limited) {
     const quiz = await fetchJson(
       `https://create.kahoot.it/rest/kahoots/${encodeURIComponent(candidate.uuid)}`,
       kahootHeaders("https://create.kahoot.it"),
@@ -350,6 +351,10 @@ async function pickMatchingQuiz(candidates, choiceCounts, title, source) {
     }
 
     if (candidate.score >= 0.99) {
+      return result;
+    }
+
+    if (candidate.score >= 0.8) {
       exactMatches.push(result);
     } else {
       layoutMatches.push(result);
@@ -375,8 +380,9 @@ async function searchQuizByLayout(choiceCounts) {
 
   const candidates = await collectCandidates(buildLayoutSearchQueries(choiceCounts), "", choiceCounts);
   const matches = [];
+  const limited = candidates.slice(0, 12);
 
-  for (const candidate of candidates) {
+  for (const candidate of limited) {
     const quiz = await fetchJson(
       `https://create.kahoot.it/rest/kahoots/${encodeURIComponent(candidate.uuid)}`,
       kahootHeaders("https://create.kahoot.it"),

@@ -190,3 +190,22 @@ button:active:not(:disabled) {
   font-weight: 700;
   box-shadow: 0 8px 24px rgba(240, 196, 25, 0.25);
 }
+
+.version-info {
+  margin: 16px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.version-info.is-stale {
+  color: #9a3412;
+  font-weight: 600;
+}
+
+.version-info.is-current {
+  color: #166534;
+}

@@ -10,6 +10,7 @@ import {
   prefetchQuizAnswers,
   rememberCorrectChoices,
 } from "./quiz-answers.js";
+import { CLIENT_BUILD } from "./version.js";
 
 const pinInput = document.getElementById("pin");
 const nameInput = document.getElementById("name");
@@ -21,6 +22,7 @@ const joinButton = document.getElementById("join");
 const disconnectButton = document.getElementById("disconnect");
 const statusEl = document.getElementById("status");
 const quizResultEl = document.getElementById("quiz-result");
+const versionInfoEl = document.getElementById("version-info");
 
 let session = 0;
 let joiners = [];
@@ -33,7 +35,10 @@ let prefetchTimer = null;
 let prefetchRetryTimer = null;
 let lastPrefetchedPin = "";
 let gameEndResults = [];
-let titleFetchPromise = null;
+let sharedQuizAnswers = null;
+let sharedQuizLoadPromise = null;
+let loadedVersion = "";
+let latestVersion = "";
 
 function getPlayerCount() {
   return Math.max(1, Math.min(100, Math.round(Number(countSlider.value))));
@@ -56,6 +61,59 @@ function setConnected(value) {
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function setImportantStatus(message) {
+  setStatus(message);
+}
+
+function renderVersionInfo() {
+  if (!versionInfoEl) {
+    return;
+  }
+
+  if (!loadedVersion) {
+    versionInfoEl.textContent = `Loading version… · ${CLIENT_BUILD}`;
+    versionInfoEl.className = "version-info";
+    return;
+  }
+
+  const stale = latestVersion && loadedVersion && latestVersion !== loadedVersion;
+  versionInfoEl.className = stale ? "version-info is-stale" : "version-info is-current";
+  versionInfoEl.textContent = stale
+    ? `Update available: latest is ${latestVersion}, you have ${loadedVersion}. Hard refresh the page. · ${CLIENT_BUILD}`
+    : `You are on the newest version: ${loadedVersion} · ${CLIENT_BUILD}`;
+}
+
+async function fetchLatestVersion() {
+  const response = await fetch(`/api/version?ts=${Date.now()}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Version check failed (${response.status})`);
+  }
+  return response.json();
+}
+
+async function checkForUpdates({ initial = false } = {}) {
+  try {
+    const info = await fetchLatestVersion();
+    latestVersion = info.version || "unknown";
+    if (initial || !loadedVersion) {
+      loadedVersion = latestVersion;
+    }
+    renderVersionInfo();
+    return info;
+  } catch {
+    if (versionInfoEl) {
+      versionInfoEl.textContent = `Version check failed · ${CLIENT_BUILD}`;
+      versionInfoEl.className = "version-info is-stale";
+    }
+    return null;
+  }
+}
+
+function resetSharedQuizAnswers() {
+  sharedQuizAnswers = null;
+  sharedQuizLoadPromise = null;
 }
 
 function setQuizResult(message, { winner = false } = {}) {
@@ -229,7 +287,7 @@ function updateQuizEndSummary(activeSession) {
 }
 
 async function applyQuizAnswersToAll(joinersList, quizAnswers) {
-  if (!quizAnswers?.answers?.length) {
+  if (!quizAnswers?.answers?.length && !quizAnswers?.answersByBlockIndex?.length) {
     return;
   }
   for (const joiner of joinersList) {
@@ -237,27 +295,58 @@ async function applyQuizAnswersToAll(joinersList, quizAnswers) {
   }
 }
 
-async function loadQuizAnswersByTitle(pin, title, choiceCounts, activeSession, quizId) {
-  if (!choiceCounts?.length) {
+async function ensureQuizAnswers(pin, title, choiceCounts, quizId, activeSession) {
+  if (!choiceCounts?.length || activeSession !== session) {
     return null;
+  }
+
+  if (sharedQuizAnswers?.answers?.length) {
+    return sharedQuizAnswers;
   }
 
   const cached = getCachedQuizAnswers(pin);
   if (cached?.answers?.length) {
+    sharedQuizAnswers = cached;
+    await applyQuizAnswersToAll(joiners, cached);
     return cached;
   }
 
-  if (!titleFetchPromise) {
-    titleFetchPromise = fetchQuizByTitle(title, choiceCounts, pin, quizId).finally(() => {
-      titleFetchPromise = null;
-    });
+  if (!sharedQuizLoadPromise) {
+    sharedQuizLoadPromise = (async () => {
+      const lookupLabel = title ? `“${title}”` : "quiz layout";
+      setImportantStatus(`Looking up answers for ${lookupLabel}…`);
+
+      const fetched = await fetchQuizByTitle(title, choiceCounts, pin, quizId);
+      if (activeSession !== session) {
+        return null;
+      }
+
+      if (fetched?.answers?.length) {
+        sharedQuizAnswers = fetched;
+        await applyQuizAnswersToAll(joiners, fetched);
+        setImportantStatus(
+          `Smart mode: ${fetched.answers.length} answers loaded for “${fetched.title || title || "quiz"}”`,
+        );
+        return fetched;
+      }
+
+      setImportantStatus(
+        title
+          ? `Private or unknown quiz “${title}” — learning answers after each reveal`
+          : "Private quiz — learning answers after each reveal",
+      );
+      return null;
+    })();
   }
 
-  const fetched = await titleFetchPromise;
-  if (activeSession !== session) {
-    return null;
+  return sharedQuizLoadPromise;
+}
+
+function waitForSharedQuizAnswers() {
+  if (sharedQuizAnswers?.answers?.length) {
+    return Promise.resolve(sharedQuizAnswers);
   }
-  return fetched;
+  return sharedQuizLoadPromise || Promise.resolve(null);
 }
 
 async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
@@ -291,7 +380,9 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
       pin,
       nickname,
       autoAnswer,
-      quizAnswers,
+      quizAnswers: sharedQuizAnswers || quizAnswers,
+      waitForQuizAnswers: waitForSharedQuizAnswers,
+      getSharedQuizAnswers: () => sharedQuizAnswers,
       onJoined: () => {
         clearTimeout(joinTimeout);
         if (activeSession !== session) {
@@ -310,10 +401,15 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
         updateBatchStatus();
       },
       onStatus: (message) => {
-        if (activeSession !== session || targetCount !== 1) {
+        if (activeSession !== session) {
           return;
         }
-        setStatus(message);
+        if (
+          targetCount === 1 ||
+          /Smart mode|Looking up|known answer|learn answers|Private quiz/i.test(message)
+        ) {
+          setImportantStatus(message);
+        }
       },
       onGameEnd: (result) => {
         if (activeSession !== session) {
@@ -331,41 +427,20 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
         gameEndResults.push(result);
         updateQuizEndSummary(activeSession);
       },
-      onQuizStart: async ({ title, quizId, choiceCounts, pin: quizPin }) => {
+      onQuizStart: ({ title, quizId, choiceCounts, pin: quizPin }) => {
         if (activeSession !== session || !autoAnswer) {
           return;
         }
-
-        const fetched = await loadQuizAnswersByTitle(
-          quizPin,
-          title,
-          choiceCounts,
-          activeSession,
-          quizId,
-        );
-        if (activeSession !== session) {
-          return;
-        }
-
-        if (fetched?.answers?.length) {
-          quizAnswers = fetched;
-          await applyQuizAnswersToAll(joiners, fetched);
-          const label = fetched.title || title || "quiz";
-          setStatus(`Smart mode: ${fetched.answers.length} answers loaded for “${label}”`);
-          return;
-        }
-
-        setStatus(
-          title
-            ? `Could not find answers for “${title}” — guessing until revealed`
-            : "Could not find answers for this layout — guessing until revealed",
-        );
+        ensureQuizAnswers(quizPin, title, choiceCounts, quizId, activeSession);
       },
       onLearnedAnswer: ({ pin: learnedPin, quizQuestionIndex, correctChoices }) => {
         if (activeSession !== session) {
           return;
         }
         rememberCorrectChoices(learnedPin, quizQuestionIndex, correctChoices);
+        for (const joiner of joiners) {
+          joiner.applyQuizAnswers(joiner.quizAnswers);
+        }
       },
     });
 
@@ -417,6 +492,7 @@ function onJoin() {
   joiners = [];
   gameEndResults = [];
   setQuizResult("");
+  resetSharedQuizAnswers();
   clearLearnedAnswers(pin);
   stopPrefetchRetryLoop();
 
@@ -431,6 +507,7 @@ function onDisconnect() {
   session += 1;
   setConnected(false);
   setStatus("Disconnecting...");
+  resetSharedQuizAnswers();
 
   const activeJoiners = [...joiners];
   joiners = [];
@@ -485,3 +562,7 @@ updateCountLabel();
 onRandomNamesToggle();
 startPrefetchRetryLoop();
 schedulePrefetch(pinInput.value);
+checkForUpdates({ initial: true });
+setInterval(() => {
+  checkForUpdates();
+}, 30000);
