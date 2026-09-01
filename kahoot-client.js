@@ -96,19 +96,32 @@ async function readJsonResponse(response) {
   }
 }
 
-async function reserveSession(pin) {
-  const response = await fetch(`/api/session?pin=${encodeURIComponent(pin)}`);
-  const data = await readJsonResponse(response);
+async function reserveSession(pin, { attempts = 3 } = {}) {
+  let lastError = new Error("Could not reserve Kahoot session");
 
-  if (!response.ok || data.error) {
-    throw new Error(data.error || `Kahoot returned status ${response.status}`);
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(`/api/session?pin=${encodeURIComponent(pin)}`);
+      const data = await readJsonResponse(response);
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || `Kahoot returned status ${response.status}`);
+      }
+
+      if (!data.sessionToken || !data.challenge) {
+        throw new Error("Kahoot did not return session data");
+      }
+
+      return { sessionToken: data.sessionToken, challenge: data.challenge };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
+      }
+    }
   }
 
-  if (!data.sessionToken || !data.challenge) {
-    throw new Error("Kahoot did not return session data");
-  }
-
-  return { sessionToken: data.sessionToken, challenge: data.challenge };
+  throw lastError;
 }
 
 function makeWebSocketUrl(pin, cometToken) {
@@ -403,7 +416,7 @@ export class KahootJoiner {
         }
       };
 
-      const timeout = setTimeout(() => finish(new Error("Connection timed out")), 15000);
+      const timeout = setTimeout(() => finish(new Error("Connection timed out")), 25000);
 
       ws.onopen = () => {
         if (runId !== this.runId || this.closed) {

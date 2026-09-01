@@ -40,6 +40,10 @@ let sharedQuizAnswers = null;
 let sharedQuizLoadPromise = null;
 let loadedVersion = "";
 let latestVersion = "";
+const MAX_CONCURRENT_JOINS = 4;
+const JOIN_TIMEOUT_MS = 45000;
+const JOIN_RETRY_ATTEMPTS = 2;
+const JOIN_LAUNCH_DELAY_MS = 400;
 
 const MAX_PLAYERS = 44;
 
@@ -359,8 +363,142 @@ function waitForSharedQuizAnswers() {
   return sharedQuizLoadPromise || Promise.resolve(null);
 }
 
+function buildJoinerCallbacks(activeSession, autoAnswer) {
+  return {
+    onStatus: (message) => {
+      if (activeSession !== session) {
+        return;
+      }
+      if (
+        targetCount === 1 ||
+        /Smart mode|Looking up|known answer|quiz answers|google|Googled|learn answers|Private quiz/i.test(message)
+      ) {
+        setImportantStatus(message);
+      }
+    },
+    onGameEnd: (result) => {
+      if (activeSession !== session) {
+        return;
+      }
+      const existingIndex = gameEndResults.findIndex((entry) => entry.nickname === result.nickname);
+      if (existingIndex >= 0) {
+        const existing = gameEndResults[existingIndex];
+        if (!existing.won && result.won) {
+          gameEndResults[existingIndex] = result;
+          updateQuizEndSummary(activeSession);
+        }
+        return;
+      }
+      gameEndResults.push(result);
+      updateQuizEndSummary(activeSession);
+    },
+    onQuizStart: ({ title, quizId, choiceCounts, pin: quizPin }) => {
+      if (activeSession !== session || !autoAnswer) {
+        return;
+      }
+      ensureQuizAnswers(quizPin, title, choiceCounts, quizId, activeSession);
+    },
+    onLearnedAnswer: ({ pin: learnedPin, quizQuestionIndex, correctChoices }) => {
+      if (activeSession !== session) {
+        return;
+      }
+      rememberCorrectChoices(learnedPin, quizQuestionIndex, correctChoices);
+      for (const joiner of joiners) {
+        joiner.applyQuizAnswers(joiner.quizAnswers);
+      }
+    },
+  };
+}
+
+function attemptJoin(activeSession, pin, nickname, autoAnswer, quizAnswers) {
+  return new Promise((resolve) => {
+    const joiner = new KahootJoiner();
+    let settled = false;
+    let joinTimeout;
+
+    const settle = (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(joinTimeout);
+      resolve({ joiner, ...result });
+    };
+
+    joiner.start({
+      pin,
+      nickname,
+      autoAnswer,
+      quizAnswers: sharedQuizAnswers || quizAnswers,
+      waitForQuizAnswers: waitForSharedQuizAnswers,
+      getSharedQuizAnswers: () => sharedQuizAnswers,
+      onJoined: () => {
+        if (activeSession !== session) {
+          settle({ success: false, aborted: true });
+          return;
+        }
+        joinedCount += 1;
+        updateBatchStatus();
+        settle({ success: true });
+      },
+      onError: (message) => {
+        if (activeSession !== session) {
+          settle({ success: false, aborted: true });
+          return;
+        }
+        settle({ success: false, message });
+      },
+      ...buildJoinerCallbacks(activeSession, autoAnswer),
+    });
+
+    joinTimeout = setTimeout(() => {
+      if (joiner.joined) {
+        settle({ success: true });
+        return;
+      }
+      if (activeSession !== session) {
+        settle({ success: false, aborted: true });
+        return;
+      }
+      joiner.stop();
+      settle({
+        success: false,
+        message: "Join timed out — Kahoot may be busy. Retrying…",
+      });
+    }, JOIN_TIMEOUT_MS);
+  });
+}
+
+async function joinPlayerWithRetry(activeSession, pin, nickname, autoAnswer, quizAnswers) {
+  for (let attempt = 1; attempt <= JOIN_RETRY_ATTEMPTS; attempt += 1) {
+    if (activeSession !== session) {
+      return null;
+    }
+
+    const result = await attemptJoin(activeSession, pin, nickname, autoAnswer, quizAnswers);
+    if (activeSession !== session || result.aborted) {
+      return null;
+    }
+
+    if (result.success) {
+      return result.joiner;
+    }
+
+    lastError = result.message || "Failed to join";
+    if (attempt < JOIN_RETRY_ATTEMPTS) {
+      await sleep(JOIN_LAUNCH_DELAY_MS * attempt);
+    } else {
+      lastError = "Join timed out — is the PIN correct and the host running?";
+      failedCount += 1;
+      updateBatchStatus();
+      return null;
+    }
+  }
+
+  return null;
+}
+
 async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
-  const delay = nicknames.length > 20 ? 150 : 700;
   let quizAnswers = getCachedQuizAnswers(pin);
 
   if (autoAnswer) {
@@ -377,99 +515,51 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
     }
   }
 
-  for (let index = 0; index < nicknames.length; index += 1) {
-    if (activeSession !== session) {
-      return;
-    }
+  let nextIndex = 0;
+  let inFlight = 0;
 
-    const nickname = nicknames[index];
-    const joiner = new KahootJoiner();
-    let joinTimeout;
-
-    joiner.start({
-      pin,
-      nickname,
-      autoAnswer,
-      quizAnswers: sharedQuizAnswers || quizAnswers,
-      waitForQuizAnswers: waitForSharedQuizAnswers,
-      getSharedQuizAnswers: () => sharedQuizAnswers,
-      onJoined: () => {
-        clearTimeout(joinTimeout);
-        if (activeSession !== session) {
-          return;
-        }
-        joinedCount += 1;
-        updateBatchStatus();
-      },
-      onError: (message) => {
-        clearTimeout(joinTimeout);
-        if (activeSession !== session) {
-          return;
-        }
-        lastError = message;
-        failedCount += 1;
-        updateBatchStatus();
-      },
-      onStatus: (message) => {
-        if (activeSession !== session) {
-          return;
-        }
-        if (
-          targetCount === 1 ||
-          /Smart mode|Looking up|known answer|quiz answers|google|Googled|learn answers|Private quiz/i.test(message)
-        ) {
-          setImportantStatus(message);
-        }
-      },
-      onGameEnd: (result) => {
-        if (activeSession !== session) {
-          return;
-        }
-        const existingIndex = gameEndResults.findIndex((entry) => entry.nickname === result.nickname);
-        if (existingIndex >= 0) {
-          const existing = gameEndResults[existingIndex];
-          if (!existing.won && result.won) {
-            gameEndResults[existingIndex] = result;
-            updateQuizEndSummary(activeSession);
-          }
-          return;
-        }
-        gameEndResults.push(result);
-        updateQuizEndSummary(activeSession);
-      },
-      onQuizStart: ({ title, quizId, choiceCounts, pin: quizPin }) => {
-        if (activeSession !== session || !autoAnswer) {
-          return;
-        }
-        ensureQuizAnswers(quizPin, title, choiceCounts, quizId, activeSession);
-      },
-      onLearnedAnswer: ({ pin: learnedPin, quizQuestionIndex, correctChoices }) => {
-        if (activeSession !== session) {
-          return;
-        }
-        rememberCorrectChoices(learnedPin, quizQuestionIndex, correctChoices);
-        for (const joiner of joiners) {
-          joiner.applyQuizAnswers(joiner.quizAnswers);
-        }
-      },
-    });
-
-    joiners.push(joiner);
-
-    joinTimeout = setTimeout(() => {
-      if (activeSession !== session || joiner.joined) {
+  await new Promise((resolveAll) => {
+    const pump = () => {
+      if (activeSession !== session) {
+        resolveAll();
         return;
       }
-      lastError = "Join timed out — is the PIN correct and the host running?";
-      failedCount += 1;
-      joiner.stop();
-      updateBatchStatus();
-    }, 20000);
 
-    if (index < nicknames.length - 1) {
-      await sleep(delay);
-    }
-  }
+      while (inFlight < MAX_CONCURRENT_JOINS && nextIndex < nicknames.length) {
+        const nickname = nicknames[nextIndex];
+        nextIndex += 1;
+        inFlight += 1;
+
+        joinPlayerWithRetry(activeSession, pin, nickname, autoAnswer, quizAnswers)
+          .then((joiner) => {
+            if (joiner) {
+              joiners.push(joiner);
+            }
+          })
+          .finally(async () => {
+            inFlight -= 1;
+            if (activeSession !== session) {
+              resolveAll();
+              return;
+            }
+            if (nextIndex < nicknames.length) {
+              await sleep(JOIN_LAUNCH_DELAY_MS);
+            }
+            if (nextIndex >= nicknames.length && inFlight === 0) {
+              resolveAll();
+            } else {
+              pump();
+            }
+          });
+      }
+
+      if (nextIndex >= nicknames.length && inFlight === 0) {
+        resolveAll();
+      }
+    };
+
+    pump();
+  });
 }
 
 function onJoin() {
