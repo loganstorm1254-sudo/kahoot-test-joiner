@@ -796,15 +796,43 @@ function onDecoyPinInput() {
   }
 }
 
-function onDecoySubmit(event) {
+async function validateGamePin(pin) {
+  const response = await fetch(`/api/session?pin=${encodeURIComponent(pin)}`);
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("Could not reach Kahoot. Try again.");
+  }
+
+  if (!response.ok || data.error) {
+    throw new Error(data.error || "That game doesn't seem to exist. Check the PIN and try again.");
+  }
+
+  return true;
+}
+
+function openJoinerWithPin(rawPin, { autoJoin = true } = {}) {
+  const pin = normalizePin(rawPin);
+  pinInput.value = formatPinForDisplay(pin);
+  setView(true);
+  schedulePrefetch(pin);
+  refreshPrefetchStatus(pin, { force: true });
+
+  if (autoJoin && !connected && !anyRunning()) {
+    onJoin();
+  }
+}
+
+async function onDecoySubmit(event) {
   event.preventDefault();
   if (!decoyPinInput || !decoyEnterButton) {
     return;
   }
 
-  const pin = decoyPinInput.value.replace(/\D/g, "");
+  const pin = normalizePin(decoyPinInput.value);
 
-  if (pin.length < 6) {
+  if (!isValidPin(pin)) {
     if (decoyStatusEl) {
       decoyStatusEl.textContent = "Please enter a valid PIN.";
     }
@@ -817,13 +845,17 @@ function onDecoySubmit(event) {
   decoyEnterButton.classList.add("is-loading");
   decoyEnterButton.disabled = true;
 
-  window.setTimeout(() => {
+  try {
+    await validateGamePin(pin);
+    openJoinerWithPin(pin);
+  } catch (error) {
+    if (decoyStatusEl) {
+      decoyStatusEl.textContent = error.message || "That game doesn't seem to exist. Check the PIN and try again.";
+    }
+  } finally {
     decoyEnterButton.classList.remove("is-loading");
     decoyEnterButton.disabled = false;
-    if (decoyStatusEl) {
-      decoyStatusEl.textContent = "That game doesn't seem to exist. Check the PIN and try again.";
-    }
-  }, 1400);
+  }
 }
 
 function initShell() {

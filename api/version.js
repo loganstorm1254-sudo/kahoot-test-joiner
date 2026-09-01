@@ -21,7 +21,7 @@ export async function GET() {
       fullSha: sha,
       label: `build ${shortSha}`,
       deployedAt,
-      features: ["kahoot-decoy-v3", "qw-toggle", "version-checker"],
+      features: ["kahoot-decoy-v4", "qw-toggle", "version-checker"],
     },
     { headers: corsHeaders() },
   );
