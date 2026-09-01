@@ -42,7 +42,7 @@
       ]
     },
     {
-      "source": "/(app|kahoot-client|quiz-answers|activity-log|version)\\.js",
+      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|version)\\.js",
       "headers": [
         {
           "key": "Cache-Control",

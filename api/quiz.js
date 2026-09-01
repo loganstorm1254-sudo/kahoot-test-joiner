@@ -1,3 +1,5 @@
+import { resolveKahootImageUrl } from "../kahoot-images.js";
+
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -61,25 +63,16 @@ function getChoiceCount(question) {
 }
 
 function normalizeImageUrl(raw) {
-  const value = String(raw || "").trim();
-  if (!value) {
-    return "";
-  }
-  if (value.startsWith("//")) {
-    return `https:${value}`;
-  }
-  if (value.startsWith("http://") || value.startsWith("https://")) {
-    return value;
-  }
-  return "";
+  return resolveKahootImageUrl(raw);
 }
 
 function extractImageUrl(question) {
-  return normalizeImageUrl(
+  return resolveKahootImageUrl(
     question?.image ||
       question?.cover ||
       question?.resources ||
       question?.media?.url ||
+      question?.media ||
       question?.video?.fullImage ||
       "",
   );
@@ -106,20 +99,19 @@ function extractAnswers(questions) {
       }
     }
 
-    const choiceLabels = choices
-      .map((choice, index) => {
-        const text = stripHtml(choice.answer || choice.text || choice.label || "");
-        if (text) {
-          return text;
-        }
-        if (normalizeImageUrl(choice.image)) {
-          return `image choice ${index + 1}`;
-        }
-        return "";
-      })
-      .filter(Boolean);
+    const choiceLabels = choices.map((choice, index) => {
+      const text = stripHtml(choice.answer || choice.text || choice.label || "");
+      const imageUrl = resolveKahootImageUrl(choice.image);
+      if (text) {
+        return text;
+      }
+      if (imageUrl) {
+        return `image choice ${index + 1}`;
+      }
+      return "";
+    });
 
-    const choiceImages = choices.map((choice) => normalizeImageUrl(choice.image));
+    const choiceImages = choices.map((choice) => resolveKahootImageUrl(choice.image));
 
     const entry = {
       type,

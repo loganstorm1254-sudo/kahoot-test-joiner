@@ -1,3 +1,5 @@
+import { resolveKahootImageUrl } from "../kahoot-images.js";
+
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
@@ -306,17 +308,7 @@ async function serperSearch(query) {
 }
 
 function normalizeImageUrl(raw) {
-  const value = String(raw || "").trim();
-  if (!value) {
-    return "";
-  }
-  if (value.startsWith("//")) {
-    return `https:${value}`;
-  }
-  if (value.startsWith("http://") || value.startsWith("https://")) {
-    return value;
-  }
-  return "";
+  return resolveKahootImageUrl(raw);
 }
 
 function parseChoiceImages(raw) {

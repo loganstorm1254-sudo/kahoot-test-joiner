@@ -7,6 +7,7 @@ import {
   rememberCorrectChoices,
   resolveChoice,
 } from "./quiz-answers.js";
+import { hasResolvedImages, resolveKahootImageUrl } from "./kahoot-images.js";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -19,26 +20,18 @@ function stripHtml(value) {
 }
 
 function normalizeImageUrl(raw) {
-  const value = String(raw || "").trim();
-  if (!value) {
-    return "";
-  }
-  if (value.startsWith("//")) {
-    return `https:${value}`;
-  }
-  if (value.startsWith("http://") || value.startsWith("https://")) {
-    return value;
-  }
-  return "";
+  return resolveKahootImageUrl(raw);
 }
 
 function extractLiveQuestionMeta(content) {
   const imageUrl = normalizeImageUrl(
     content?.image ||
       content?.imageUrl ||
+      content?.imageMetadata ||
       content?.resources ||
       content?.cover ||
       content?.media?.url ||
+      content?.media ||
       content?.video?.fullImage ||
       "",
   );
@@ -60,7 +53,9 @@ function extractLiveQuestionMeta(content) {
     for (let index = 0; index < rawChoices.length; index += 1) {
       const choice = rawChoices[index];
       const text = stripHtml(choice?.answer || choice?.text || choice?.label || choice?.name || "");
-      const choiceImage = normalizeImageUrl(choice?.image || choice?.media?.url || "");
+      const choiceImage = normalizeImageUrl(
+        choice?.image || choice?.imageMetadata || choice?.media?.url || choice?.media || "",
+      );
       choiceImages.push(choiceImage);
       if (text) {
         choiceLabels.push(text);
@@ -646,10 +641,10 @@ export class KahootJoiner {
     const shared = this.getSharedQuizAnswers?.();
     if (shared) {
       this.applyQuizAnswers(shared);
-      return shared;
     }
 
     if (!this.waitForQuizAnswers) {
+      await this.ensureQuizImagesLoaded();
       return this.quizAnswers;
     }
 
@@ -663,7 +658,40 @@ export class KahootJoiner {
     if (loaded) {
       this.applyQuizAnswers(loaded);
     }
+
+    await this.ensureQuizImagesLoaded();
     return loaded || this.quizAnswers;
+  }
+
+  async ensureQuizImagesLoaded() {
+    const entry = this.getQuestionEntry();
+    if (hasResolvedImages(entry)) {
+      return this.quizAnswers;
+    }
+
+    const quizId = this.liveQuizId;
+    if (!quizId) {
+      return this.quizAnswers;
+    }
+
+    try {
+      const response = await fetch(`/api/quiz?quizId=${encodeURIComponent(quizId)}`);
+      const data = await response.json().catch(() => null);
+      if (data?.answers?.length) {
+        this.applyQuizAnswers(data);
+        const refreshed = this.getQuestionEntry();
+        const imageCount = (refreshed?.choiceImages || []).filter(Boolean).length;
+        if (refreshed?.imageUrl || imageCount) {
+          this.status(
+            `Loaded images for Q${this.getDisplayQuestionNumber()} (${imageCount || 1} image${imageCount === 1 ? "" : "s"})`,
+          );
+        }
+      }
+    } catch {
+      // ignore fetch errors
+    }
+
+    return this.quizAnswers;
   }
 
   getQuestionEntry() {
@@ -680,22 +708,31 @@ export class KahootJoiner {
       return null;
     }
     if (!cached) {
-      return live;
+      return {
+        ...live,
+        imageUrl: normalizeImageUrl(live.imageUrl || ""),
+        choiceImages: (live.choiceImages || []).map((url) => normalizeImageUrl(url)),
+      };
     }
     if (!live) {
-      return cached;
+      return {
+        ...cached,
+        imageUrl: normalizeImageUrl(cached.imageUrl || ""),
+        choiceImages: (cached.choiceImages || []).map((url) => normalizeImageUrl(url)),
+      };
     }
 
     return {
       ...cached,
       question: cached.question || live.question || "",
-      imageUrl: cached.imageUrl || live.imageUrl || "",
+      imageUrl: normalizeImageUrl(cached.imageUrl || live.imageUrl || ""),
       choiceLabels:
         cached.choiceLabels?.some((label) => String(label || "").trim()) ?
           cached.choiceLabels
         : live.choiceLabels || [],
-      choiceImages:
-        cached.choiceImages?.some(Boolean) ? cached.choiceImages : live.choiceImages || [],
+      choiceImages: (cached.choiceImages?.some(Boolean) ? cached.choiceImages : live.choiceImages || []).map(
+        (url) => normalizeImageUrl(url),
+      ),
     };
   }
 
@@ -716,9 +753,9 @@ export class KahootJoiner {
 
   getSearchOptions() {
     const entry = this.getQuestionEntry();
-    const imageUrl = entry?.imageUrl || entry?.choiceImages?.[0] || "";
-    const choiceImages = Array.isArray(entry?.choiceImages) ? entry.choiceImages : [];
-    const hasImages = Boolean(imageUrl || choiceImages.length);
+    const imageUrl = normalizeImageUrl(entry?.imageUrl || entry?.choiceImages?.find(Boolean) || "");
+    const choiceImages = (entry?.choiceImages || []).map((url) => normalizeImageUrl(url));
+    const hasImages = Boolean(imageUrl || choiceImages.some(Boolean));
     return {
       imageUrl,
       choiceImages,
@@ -793,6 +830,8 @@ export class KahootJoiner {
       }
     } else if (!entry && !this.hasKnownAnswer()) {
       this.status(`Q${this.getDisplayQuestionNumber()}: waiting for quiz data…`);
+    } else if (entry && !hasResolvedImages(entry) && !this.hasKnownAnswer()) {
+      this.status(`Q${this.getDisplayQuestionNumber()}: no images yet — fetching quiz media…`);
     }
 
     const { choice, mode, detail } = await this.buildSmartChoice(questionType, numChoices);
@@ -1286,7 +1325,7 @@ export class KahootJoiner {
   }
 
   maybeRequestQuizAnswers(content, runId) {
-    if (this.closed || runId !== this.runId || this.quizLookupStarted) {
+    if (this.closed || runId !== this.runId) {
       return;
     }
 
@@ -1311,8 +1350,15 @@ export class KahootJoiner {
     }
 
     const shared = this.getSharedQuizAnswers?.();
-    if (shared) {
+    if (shared?.answers?.length) {
       this.applyQuizAnswers(shared);
+      return;
+    }
+
+    const hasQuizId = Boolean(quizId);
+    const shouldFetch =
+      !this.quizLookupStarted || (hasQuizId && !this.quizAnswers?.answers?.length);
+    if (!shouldFetch) {
       return;
     }
 
