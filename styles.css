@@ -182,33 +182,9 @@ code {
   background: var(--bg-secondary);
 }
 
-.site-nav-link-secret {
-  color: #7c3aed;
-  background: #f3e8ff;
-}
-
 .site-nav-link-secret.is-active {
   background: #ede9fe;
   color: #6d28d9;
-}
-
-.kahoot-nav-item.is-hidden {
-  display: none;
-}
-
-.kahoot-nav-item:not(.is-hidden) {
-  animation: pop-in 0.35s ease;
-}
-
-@keyframes pop-in {
-  from {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
 }
 
 .site-main {
@@ -447,9 +423,9 @@ code {
 .terminal-window {
   border-radius: 14px;
   overflow: hidden;
-  border: 1px solid #1f2937;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
-  background: #0b1220;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  background: #ffffff;
 }
 
 .terminal-titlebar {
@@ -457,8 +433,8 @@ code {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: #111827;
-  border-bottom: 1px solid #1f2937;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
 }
 
 .terminal-dot {
@@ -482,7 +458,7 @@ code {
 .terminal-title {
   margin-left: 8px;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-secondary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
@@ -494,35 +470,36 @@ code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
   line-height: 1.55;
-  color: #d1fae5;
+  color: #000000;
   white-space: pre-wrap;
+  background: #ffffff;
 }
 
 .terminal-line {
   margin: 0 0 6px;
+  color: #000000;
 }
 
 .terminal-line-muted {
-  color: #6b7280;
+  color: #333333;
 }
 
 .terminal-line-success {
-  color: #4ade80;
+  color: #000000;
+  font-weight: 600;
 }
 
 .terminal-line-warn {
-  color: #fbbf24;
+  color: #000000;
 }
 
 .terminal-line-error {
-  color: #f87171;
+  color: #000000;
+  font-weight: 700;
 }
 
 .terminal-line-rainbow {
-  background: linear-gradient(90deg, #f472b6, #a78bfa, #60a5fa, #34d399, #fbbf24);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #000000;
   font-weight: 700;
 }
 
@@ -531,15 +508,16 @@ code {
   align-items: center;
   gap: 8px;
   padding: 10px 16px 14px;
-  border-top: 1px solid #1f2937;
-  background: #0b1220;
+  border-top: 1px solid var(--border);
+  background: #ffffff;
 }
 
 .terminal-prompt {
   flex-shrink: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
-  color: #34d399;
+  color: #000000;
+  font-weight: 600;
 }
 
 .terminal-input {
@@ -548,7 +526,7 @@ code {
   border: 0;
   outline: none;
   background: transparent;
-  color: #f9fafb;
+  color: #000000;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
 }

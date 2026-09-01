@@ -21,7 +21,7 @@ export async function GET() {
       fullSha: sha,
       label: `build ${shortSha}`,
       deployedAt,
-      features: ["revision-v1", "revision-terminal", "version-checker"],
+      features: ["revision-v2", "revision-terminal", "version-checker"],
     },
     { headers: corsHeaders() },
   );

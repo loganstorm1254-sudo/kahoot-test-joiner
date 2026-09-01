@@ -715,7 +715,6 @@ const KAHOOT_UNLOCK_KEY = "reviseright-kahoot-unlocked";
 const terminalOutput = document.getElementById("terminal-output");
 const terminalForm = document.getElementById("terminal-form");
 const terminalInput = document.getElementById("terminal-input");
-const kahootNavItem = document.querySelector(".kahoot-nav-item");
 
 let kahootUnlocked = sessionStorage.getItem(KAHOOT_UNLOCK_KEY) === "1";
 let terminalBooted = false;
@@ -758,7 +757,6 @@ function bootTerminal({ force = false } = {}) {
       "ReviseRight student shell v2.1.0",
       "Logged in as: student@revise-right",
       "",
-      "Type 'help' to see commands.",
       "Hint: teachers hide the best tools in plain sight.",
       "",
     ],
@@ -775,11 +773,6 @@ function revealKahoot({ fromTerminal = false } = {}) {
   kahootUnlocked = true;
   sessionStorage.setItem(KAHOOT_UNLOCK_KEY, "1");
   document.body.classList.add("kahoot-unlocked");
-
-  if (kahootNavItem) {
-    kahootNavItem.hidden = false;
-    kahootNavItem.classList.remove("is-hidden");
-  }
 
   if (fromTerminal) {
     printTerminalBlock(
@@ -820,25 +813,6 @@ function runTerminalCommand(rawInput) {
   if (command === "clear" || command === "cls") {
     terminalOutput.textContent = "";
     bootTerminal({ force: true });
-    return;
-  }
-
-  if (command === "help" || command === "?") {
-    printTerminalBlock(
-      [
-        "Available commands:",
-        "  help              Show this message",
-        "  subjects          List revision subjects",
-        "  revise <subject>  Open a study module",
-        "  progress          Show your weekly stats",
-        "  motd              Message of the day",
-        "  whoami            Show current user",
-        "  date              Show today's date",
-        "  clear             Clear the screen",
-        "  kahoot            ???",
-      ],
-      "terminal-line-muted",
-    );
     return;
   }
 
@@ -917,27 +891,18 @@ function runTerminalCommand(rawInput) {
   }
 
   printTerminalLine(`Command not found: ${input}`, "terminal-line-error");
-  printTerminalLine("Type 'help' for available commands.", "terminal-line-muted");
 }
 
 function initRevisionSite() {
   if (kahootUnlocked) {
     document.body.classList.add("kahoot-unlocked");
-    if (kahootNavItem) {
-      kahootNavItem.hidden = false;
-      kahootNavItem.classList.remove("is-hidden");
-    }
   }
 
   for (const button of document.querySelectorAll("[data-tab-target]")) {
     button.addEventListener("click", (event) => {
       event.preventDefault();
-      const target = button.dataset.tabTarget;
-      if (target === "kahoot" && !kahootUnlocked) {
-        return;
-      }
-      setActiveTab(target);
-      if (target === "terminal") {
+      setActiveTab(button.dataset.tabTarget);
+      if (button.dataset.tabTarget === "terminal") {
         bootTerminal();
       }
     });

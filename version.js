@@ -1,1 +1,1 @@
-export const CLIENT_BUILD = "revision-v1";
+export const CLIENT_BUILD = "revision-v2";

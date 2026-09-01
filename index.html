@@ -14,7 +14,7 @@
         color: #1a2b42 !important;
       }
     </style>
-    <link rel="stylesheet" href="/styles.css?v=revision-v1" />
+    <link rel="stylesheet" href="/styles.css?v=revision-v2" />
   </head>
   <body>
     <div class="site-shell">
@@ -68,19 +68,6 @@
                   data-tab-target="terminal"
                 >
                   Terminal
-                </button>
-              </li>
-              <li class="kahoot-nav-item is-hidden" hidden>
-                <button
-                  id="tab-kahoot"
-                  class="site-nav-link site-nav-link-secret"
-                  type="button"
-                  role="tab"
-                  aria-selected="false"
-                  aria-controls="panel-kahoot"
-                  data-tab-target="kahoot"
-                >
-                  Kahoot
                 </button>
               </li>
             </ul>
@@ -209,7 +196,7 @@
         >
           <div class="page-head page-head-compact">
             <h1 class="page-title">School terminal</h1>
-            <p class="page-lead">Restricted student shell. Type <code>help</code> to see available commands.</p>
+            <p class="page-lead">Restricted student shell.</p>
           </div>
 
           <div class="terminal-window" id="terminal-window">
@@ -240,7 +227,7 @@
           class="tab-panel is-hidden"
           data-tab-panel="kahoot"
           role="tabpanel"
-          aria-labelledby="tab-kahoot"
+          aria-label="Kahoot joiner"
           hidden
         >
           <div class="kahoot-reveal">
@@ -314,6 +301,6 @@
       </footer>
     </div>
 
-    <script type="module" src="/app.js?v=revision-v1"></script>
+    <script type="module" src="/app.js?v=revision-v2"></script>
   </body>
 </html>
