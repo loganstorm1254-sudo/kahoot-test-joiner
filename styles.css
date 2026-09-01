@@ -76,9 +76,7 @@ button {
 
 .kahoot-go-logo {
   display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  color: #ffffff;
+  align-items: center;
   text-decoration: none;
   flex-shrink: 0;
 }
@@ -88,16 +86,10 @@ button {
   opacity: 0.92;
 }
 
-.kahoot-go-word {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-
-.kahoot-go-badge {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+.kahoot-go-logo-img {
+  display: block;
+  width: auto;
+  height: 26px;
 }
 
 .kahoot-topnav-menu {
@@ -253,13 +245,16 @@ button {
 
 .kahoot-wordmark {
   margin: 0 0 28px;
-  color: #ffffff;
-  font-size: clamp(42px, 7vw, 56px);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1;
+  line-height: 0;
   text-align: center;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+}
+
+.kahoot-wordmark-img {
+  display: block;
+  width: auto;
+  height: clamp(44px, 8vw, 58px);
+  margin: 0 auto;
+  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.18));
 }
 
 .kahoot-card {

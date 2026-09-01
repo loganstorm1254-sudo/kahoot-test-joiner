@@ -16,7 +16,7 @@
         background: #2f1d5c !important;
       }
     </style>
-    <link rel="stylesheet" href="/styles.css?v=kahoot-decoy-v2" />
+    <link rel="stylesheet" href="/styles.css?v=kahoot-decoy-v3" />
   </head>
   <body>
     <div id="view-decoy" class="view view-decoy">
@@ -24,7 +24,7 @@
         <header class="kahoot-topnav">
           <div class="kahoot-topnav-inner">
             <a class="kahoot-go-logo" href="https://kahoot.com/" target="_blank" rel="noopener noreferrer" aria-label="Kahoot GO">
-              <span class="kahoot-go-word">Kahoot!</span><span class="kahoot-go-badge">GO</span>
+              <img class="kahoot-go-logo-img" src="/assets/kahoot-go-logo.svg" width="88" height="56" alt="" />
             </a>
 
             <nav class="kahoot-topnav-menu" aria-label="Kahoot navigation">
@@ -64,7 +64,9 @@
           </button>
 
           <div class="kahoot-hero">
-            <h1 class="kahoot-wordmark" aria-label="Kahoot!">Kahoot!</h1>
+            <h1 class="kahoot-wordmark">
+              <img class="kahoot-wordmark-img" src="/assets/kahoot-wordmark.svg" width="88" height="30" alt="Kahoot!" />
+            </h1>
 
             <div class="kahoot-card">
               <form id="decoy-form" class="kahoot-form" autocomplete="off">
@@ -163,6 +165,6 @@
       </main>
     </div>
 
-    <script type="module" src="/app.js?v=kahoot-decoy-v2"></script>
+    <script type="module" src="/app.js?v=kahoot-decoy-v3"></script>
   </body>
 </html>
