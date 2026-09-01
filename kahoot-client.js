@@ -1,0 +1,666 @@
+const USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+const SERVICE_CHANNELS = ["/service/controller", "/service/player", "/service/status"];
+const ANSWER_TRIGGER_IDS = new Set([1, 2, 43]);
+const IGNORE_PLAYER_IDS = new Set([3, 7, 8, 9, 10, 14]);
+
+const CHALLENGE_RE =
+  /decode\.call\(this,\s*'([a-zA-Z0-9]*)'\);\s*function decode\(message\)\s*\{var offset = ([0-9+\-*/()\s]+);/;
+
+function safeEvalMath(expr) {
+  const cleaned = expr.trim();
+  if (!/^[\d+\-*/()\s]+$/.test(cleaned)) {
+    throw new Error("Invalid challenge offset expression");
+  }
+  return Function(`"use strict"; return (${cleaned});`)();
+}
+
+function decodeChallengeToken(token, offset) {
+  let result = "";
+  for (let index = 0; index < token.length; index += 1) {
+    result += String.fromCharCode((((token.charCodeAt(index) * index) + offset) % 77) + 48);
+  }
+  return result;
+}
+
+function solveChallengeWithEval(challenge) {
+  let source = challenge.replace(/(\u0009|\u2003)/g, "");
+  source = source.replace(/this /g, "this");
+  source = source.replace(/ *\./g, ".");
+  source = source.replace(/ *\( */g, "(");
+  source = source.replace(/ *\) */g, ")");
+  source = source.replace(/console\./g, "");
+  source = source.replace("this.angular.isObject(offset)", "true");
+  source = source.replace("this.angular.isString(offset)", "true");
+  source = source.replace("this.angular.isDate(offset)", "true");
+  source = source.replace("this.angular.isArray(offset)", "true");
+
+  const prelude =
+    'var _ = { replace: function(str, pattern, replacer) { return String(str).replace(pattern, replacer); } }; var log = function(){}; return ';
+  const solver = Function(`${prelude}${source}`);
+  return String(solver());
+}
+
+function solveChallenge(challenge) {
+  const cleaned = challenge.replace(/\t/g, "").replace(/\u2003/g, "");
+  let match = cleaned.match(CHALLENGE_RE);
+
+  if (match) {
+    return decodeChallengeToken(match[1], safeEvalMath(match[2]));
+  }
+
+  try {
+    return solveChallengeWithEval(cleaned);
+  } catch {
+    const loose = cleaned.match(/decode\.call\(this,\s*'([a-zA-Z0-9]*)'\)/);
+    const offsetMatch = cleaned.match(/var offset = ([^;]+);/);
+    if (!loose || !offsetMatch) {
+      throw new Error("Could not parse Kahoot challenge");
+    }
+    return decodeChallengeToken(loose[1], safeEvalMath(offsetMatch[1]));
+  }
+}
+
+function decipherToken(sessionTokenB64, challenge) {
+  const mask = solveChallenge(challenge);
+  const headerBinary = atob(sessionTokenB64);
+  let result = "";
+  for (let index = 0; index < headerBinary.length; index += 1) {
+    result += String.fromCharCode(
+      headerBinary.charCodeAt(index) ^ mask.charCodeAt(index % mask.length)
+    );
+  }
+  return result;
+}
+
+async function readJsonResponse(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
+      throw new Error(
+        "API not found — /api/session returned HTML instead of JSON. Redeploy with the api/ folder included."
+      );
+    }
+    throw new Error("Invalid response from server");
+  }
+}
+
+async function reserveSession(pin) {
+  const response = await fetch(`/api/session?pin=${encodeURIComponent(pin)}`);
+  const data = await readJsonResponse(response);
+
+  if (!response.ok || data.error) {
+    throw new Error(data.error || `Kahoot returned status ${response.status}`);
+  }
+
+  if (!data.sessionToken || !data.challenge) {
+    throw new Error("Kahoot did not return session data");
+  }
+
+  return { sessionToken: data.sessionToken, challenge: data.challenge };
+}
+
+function makeWebSocketUrl(pin, cometToken) {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const params = new URLSearchParams({
+    pin,
+    token: cometToken,
+  });
+  return `${protocol}//${window.location.host}/api/ws?${params.toString()}`;
+}
+
+function parseData(data) {
+  if (!data) {
+    return {};
+  }
+  if (typeof data === "object") {
+    return data;
+  }
+  try {
+    return JSON.parse(data);
+  } catch {
+    return {};
+  }
+}
+
+function shuffle(array) {
+  const copy = [...array];
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    [copy[index], copy[swap]] = [copy[swap], copy[index]];
+  }
+  return copy;
+}
+
+export class KahootJoiner {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.pin = "";
+    this.nickname = "test";
+    this.autoAnswer = false;
+    this.onJoined = () => {};
+    this.onError = () => {};
+
+    this.ws = null;
+    this.clientId = null;
+    this.timesync = null;
+    this.messageId = 0;
+    this.handshakeComplete = false;
+    this.loginSent = false;
+    this.subscribed = false;
+    this.joined = false;
+    this.readyToPlay = false;
+    this.currentQuestionIndex = 0;
+    this.currentQuestionType = "quiz";
+    this.currentNumChoices = 4;
+    this.lastAnsweredIndex = -1;
+    this.closed = false;
+    this.runId = 0;
+    this.cid = null;
+    this.answerTimer = null;
+  }
+
+  start({ pin, nickname, autoAnswer, onJoined, onError }) {
+    this.stop(false);
+    this.reset();
+
+    this.pin = pin.trim();
+    this.nickname = nickname.trim() || "test";
+    this.autoAnswer = Boolean(autoAnswer);
+    this.onJoined = onJoined || (() => {});
+    this.onError = onError || (() => {});
+
+    this.runId += 1;
+    const runId = this.runId;
+    this.closed = false;
+
+    this.connect(runId).catch((error) => {
+      if (runId !== this.runId || this.closed) {
+        return;
+      }
+      this.onError(error.message || String(error));
+      this.stop(false);
+    });
+  }
+
+  stop() {
+    if (this.answerTimer) {
+      clearTimeout(this.answerTimer);
+      this.answerTimer = null;
+    }
+
+    const ws = this.ws;
+    const clientId = this.clientId;
+
+    if (ws && clientId && ws.readyState === WebSocket.OPEN) {
+      try {
+        this.sendRaw({
+          channel: "/meta/disconnect",
+          clientId,
+          ext: { timesync: Date.now() },
+          id: this.nextId(),
+        });
+      } catch {
+        // ignore
+      }
+    }
+
+    this.closed = true;
+    this.joined = false;
+    this.readyToPlay = false;
+    this.runId += 1;
+
+    if (ws) {
+      try {
+        ws.close();
+      } catch {
+        // ignore
+      }
+    }
+
+    this.ws = null;
+  }
+
+  isRunning() {
+    return Boolean(this.ws && this.ws.readyState === WebSocket.OPEN && !this.closed);
+  }
+
+  async connect(runId) {
+    const { sessionToken, challenge } = await reserveSession(this.pin);
+    if (runId !== this.runId || this.closed) {
+      return;
+    }
+
+    const cometToken = decipherToken(sessionToken, challenge);
+    if (runId !== this.runId || this.closed) {
+      return;
+    }
+
+    const wsUrl = makeWebSocketUrl(this.pin, cometToken);
+    const ws = new WebSocket(wsUrl);
+    this.ws = ws;
+
+    await new Promise((resolve, reject) => {
+      let settled = false;
+
+      const finish = (error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+
+      const timeout = setTimeout(() => finish(new Error("Connection timed out")), 15000);
+
+      ws.onopen = () => {
+        if (runId !== this.runId || this.closed) {
+          ws.close();
+          finish();
+          return;
+        }
+        this.send({
+          channel: "/meta/handshake",
+          version: "1.0",
+          minimumVersion: "1.0",
+          supportedConnectionTypes: ["websocket", "long-polling"],
+          advice: { interval: 0, timeout: 60000 },
+          ext: {
+            ack: true,
+            timesync: { l: 0, o: 0, tc: Date.now() },
+          },
+        });
+        finish();
+      };
+
+      ws.onerror = () => finish(new Error("WebSocket connection failed"));
+      ws.onclose = (event) => {
+        if (!settled) {
+          finish(new Error(event.reason || "WebSocket closed before connecting"));
+        }
+      };
+    });
+
+    ws.onmessage = (event) => this.onMessage(event.data, runId);
+    ws.onerror = () => {
+      if (!this.closed && runId === this.runId) {
+        this.onError("Connection error");
+      }
+    };
+    ws.onclose = () => {
+      if (this.ws === ws) {
+        this.ws = null;
+      }
+      this.joined = false;
+      this.readyToPlay = false;
+    };
+  }
+
+  nextId() {
+    this.messageId += 1;
+    return String(this.messageId);
+  }
+
+  sendRaw(message) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    this.ws.send(JSON.stringify([message]));
+  }
+
+  send(message) {
+    if (this.closed || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    const channel = message.channel || "";
+    if (channel !== "/meta/handshake" && this.clientId) {
+      message.clientId = this.clientId;
+    }
+    message.id = this.nextId();
+    this.sendRaw(message);
+  }
+
+  subscribeChannels() {
+    if (this.subscribed || this.closed) {
+      return;
+    }
+    this.subscribed = true;
+    for (const subscription of SERVICE_CHANNELS) {
+      this.send({
+        channel: "/meta/subscribe",
+        subscription,
+      });
+    }
+  }
+
+  sendFirstConnect() {
+    if (!this.timesync) {
+      return;
+    }
+    this.send({
+      channel: "/meta/connect",
+      connectionType: "websocket",
+      advice: { timeout: 0 },
+      ext: {
+        ack: 0,
+        timesync: {
+          l: this.timesync.l,
+          o: this.timesync.o,
+          tc: Date.now(),
+        },
+      },
+    });
+  }
+
+  sendConnectPong(message) {
+    if (this.closed || !this.timesync) {
+      return;
+    }
+    const ext = message.ext || {};
+    this.send({
+      channel: "/meta/connect",
+      connectionType: "websocket",
+      ext: {
+        ack: ext.ack || 0,
+        timesync: {
+          l: this.timesync.l,
+          o: this.timesync.o,
+          tc: Date.now(),
+        },
+      },
+    });
+  }
+
+  login() {
+    if (this.loginSent || this.closed) {
+      return;
+    }
+    this.loginSent = true;
+    this.send({
+      channel: "/service/controller",
+      data: {
+        type: "login",
+        gameid: this.pin,
+        host: "kahoot.it",
+        name: this.nickname,
+        content: JSON.stringify({
+          device: {
+            userAgent: USER_AGENT,
+            screen: { width: 1920, height: 1080 },
+          },
+        }),
+      },
+    });
+  }
+
+  sendNamerator() {
+    const payload = {
+      channel: "/service/controller",
+      data: {
+        id: 16,
+        type: "message",
+        gameid: this.pin,
+        host: "kahoot.it",
+        content: JSON.stringify({ usingNamerator: false }),
+      },
+    };
+    this.send(payload);
+    setTimeout(() => this.send(payload), 50);
+  }
+
+  sendControllerMessage(messageId, content) {
+    this.send({
+      channel: "/service/controller",
+      data: {
+        id: messageId,
+        type: "message",
+        gameid: this.pin,
+        host: "kahoot.it",
+        content,
+      },
+    });
+  }
+
+  sendTwoFactorAuth() {
+    const sequence = shuffle([0, 1, 2, 3]).join("");
+    this.sendControllerMessage(50, JSON.stringify({ sequence }));
+  }
+
+  buildRandomChoice(type, numChoices) {
+    if (type === "jumble") {
+      return shuffle([0, 1, 2, 3]);
+    }
+    if (type === "multiple_select_quiz" || type === "multiple_select_poll") {
+      const pickCount = 1 + Math.floor(Math.random() * Math.min(numChoices, 4));
+      return shuffle([...Array(numChoices).keys()]).slice(0, pickCount).sort((a, b) => a - b);
+    }
+    if (type === "open_ended" || type === "word_cloud") {
+      return ["test", "idk", "hello", "yes", "ok", "maybe", "hmm", "lol"][
+        Math.floor(Math.random() * 8)
+      ];
+    }
+    return Math.floor(Math.random() * Math.max(numChoices, 1));
+  }
+
+  parseChoiceCount(content, questionType) {
+    if (questionType === "jumble") {
+      return 4;
+    }
+    if (content.quizQuestionAnswers && content.quizQuestionAnswers.length > 0) {
+      return Math.min(Math.max(content.quizQuestionAnswers[0], 1), 6);
+    }
+    if (content.answerMap) {
+      return Math.min(Math.max(Object.keys(content.answerMap).length, 1), 6);
+    }
+    if (content.numberOfAnswers) {
+      return Math.min(Math.max(content.numberOfAnswers, 1), 6);
+    }
+    return 4;
+  }
+
+  updateQuestionState(content, messageId) {
+    if (content.questionIndex != null) {
+      this.currentQuestionIndex = content.questionIndex;
+    } else if (content.questionNumber != null) {
+      this.currentQuestionIndex = content.questionNumber;
+    } else if (messageId === 2 || messageId === 1) {
+      this.currentQuestionIndex = Math.max(this.currentQuestionIndex, 1);
+    }
+
+    const blockType = content.gameBlockType || "";
+    const quizType = content.quizType || "";
+    if (blockType) {
+      this.currentQuestionType = blockType;
+    } else if (quizType) {
+      this.currentQuestionType = quizType;
+    }
+
+    const choiceCount = this.parseChoiceCount(content, this.currentQuestionType);
+    if (choiceCount) {
+      this.currentNumChoices = choiceCount;
+    }
+  }
+
+  isAnswerableMessage(id, contentStr) {
+    if (IGNORE_PLAYER_IDS.has(id)) {
+      return false;
+    }
+    return (
+      ANSWER_TRIGGER_IDS.has(id) ||
+      contentStr.includes("quizQuestionAnswers") ||
+      contentStr.includes("answerMap")
+    );
+  }
+
+  sendAnswerModern(choice) {
+    const sync = this.timesync || { l: 30, o: 0 };
+    const questionIndex = this.currentQuestionIndex;
+    const type = this.currentQuestionType || "quiz";
+    let inner;
+
+    if (typeof choice === "string") {
+      inner = { text: choice, questionIndex, type, meta: { lag: sync.l } };
+    } else if (Array.isArray(choice)) {
+      inner = { choice, questionIndex, type, meta: { lag: sync.l } };
+    } else {
+      inner = { choice, questionIndex, type, meta: { lag: sync.l } };
+    }
+
+    this.sendControllerMessage(45, JSON.stringify(inner));
+  }
+
+  handlePlayerMessage(data, runId) {
+    const id = data.id ?? -1;
+    const contentStr = typeof data.content === "string" ? data.content : "";
+
+    if (id === 14) {
+      if (!this.joined && runId === this.runId && !this.closed) {
+        this.joined = true;
+        this.readyToPlay = true;
+        this.onJoined(this.nickname);
+      }
+      return;
+    }
+
+    if (id === 52) {
+      this.readyToPlay = true;
+      return;
+    }
+
+    if (id === 53 && this.autoAnswer && this.readyToPlay) {
+      this.sendTwoFactorAuth();
+      return;
+    }
+
+    if (contentStr) {
+      try {
+        this.updateQuestionState(JSON.parse(contentStr), id);
+      } catch {
+        // ignore
+      }
+    }
+
+    if (id === 8) {
+      this.lastAnsweredIndex = -1;
+      return;
+    }
+
+    if (!this.autoAnswer || this.closed || !this.readyToPlay) {
+      return;
+    }
+    if (!this.isAnswerableMessage(id, contentStr)) {
+      return;
+    }
+    if (this.currentQuestionIndex === this.lastAnsweredIndex) {
+      return;
+    }
+
+    this.lastAnsweredIndex = this.currentQuestionIndex;
+    const choice = this.buildRandomChoice(this.currentQuestionType, this.currentNumChoices);
+    const answerDelay = 400 + Math.floor(Math.random() * 1400);
+
+    if (this.answerTimer) {
+      clearTimeout(this.answerTimer);
+    }
+
+    this.answerTimer = setTimeout(() => {
+      if (!this.closed && runId === this.runId) {
+        this.sendAnswerModern(choice);
+      }
+    }, answerDelay);
+  }
+
+  onMessage(raw, runId) {
+    if (this.closed || runId !== this.runId) {
+      return;
+    }
+
+    let messages;
+    try {
+      messages = JSON.parse(raw);
+    } catch {
+      return;
+    }
+
+    for (const message of messages) {
+      if (this.closed || runId !== this.runId) {
+        return;
+      }
+
+      const channel = message.channel || "";
+      const data = parseData(message.data);
+
+      if (channel === "/meta/handshake" && message.clientId) {
+        this.clientId = message.clientId;
+        const serverTime = (message.ext && message.ext.timesync) || {};
+        const lag = Math.round((Date.now() - (serverTime.tc || 0) - (serverTime.p || 0)) / 2);
+        const offset = (serverTime.ts || 0) - (serverTime.tc || 0) - lag;
+        this.timesync = { l: lag, o: offset };
+        this.subscribeChannels();
+        this.sendFirstConnect();
+        continue;
+      }
+
+      if (channel === "/meta/subscribe") {
+        continue;
+      }
+
+      if (channel === "/meta/connect" && message.ext) {
+        if (message.advice && message.advice.reconnect === "retry" && !this.handshakeComplete) {
+          this.handshakeComplete = true;
+          this.login();
+        }
+        this.sendConnectPong(message);
+        continue;
+      }
+
+      if (channel === "/service/controller" && data.type === "loginResponse") {
+        this.handleLoginResponse(data, runId);
+        continue;
+      }
+
+      if (channel === "/service/player") {
+        this.handlePlayerMessage(data, runId);
+        continue;
+      }
+
+      if (channel === "/service/status" && data.status === "LOCKED") {
+        this.onError("This Kahoot game is locked.");
+      }
+    }
+  }
+
+  handleLoginResponse(data, runId) {
+    if (runId !== this.runId || this.closed) {
+      return;
+    }
+
+    if (data.error) {
+      this.onError(data.description || data.error || "Login rejected");
+      return;
+    }
+
+    if (!data.cid) {
+      return;
+    }
+
+    this.cid = String(data.cid);
+    this.sendNamerator();
+    if (!this.joined) {
+      this.joined = true;
+      this.onJoined(this.nickname);
+    }
+    this.readyToPlay = true;
+  }
+}

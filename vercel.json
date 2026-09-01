@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/session.js": {
+      "maxDuration": 30
+    },
+    "api/ws.js": {
+      "maxDuration": 300
+    }
+  }
+}
