@@ -12,7 +12,11 @@ export function isValidPin(pin) {
 }
 
 function cacheKeyForTitle(title, counts) {
-  return `${String(title || "").trim().toLowerCase()}::${(counts || []).join(",")}`;
+  return `${normalizeTitle(title)}::${(counts || []).join(",")}`;
+}
+
+function cacheKeyForCounts(counts) {
+  return `counts::${(counts || []).join(",")}`;
 }
 
 export function rememberCorrectChoices(pin, quizQuestionIndex, correctChoices) {
@@ -53,16 +57,28 @@ export function clearQuizCache(pin) {
 }
 
 function storeQuizAnswers(data, { pin, title, counts } = {}) {
-  if (!data?.answers?.length) {
+  if (!data?.answers?.length && !data?.answersByBlockIndex?.length) {
     return null;
   }
   if (pin) {
     cacheByPin.set(normalizePin(pin), data);
   }
+  if (counts?.length) {
+    cacheByTitle.set(cacheKeyForCounts(counts), data);
+  }
   if (title) {
     cacheByTitle.set(cacheKeyForTitle(title, counts), data);
   }
   return data;
+}
+
+export function normalizeTitle(title) {
+  return String(title || "")
+    .replace(/['’`]/g, "")
+    .replace(/[^a-z0-9\s]/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 async function fetchQuizApi(query) {
@@ -93,7 +109,8 @@ export async function fetchQuizAnswers(pin, { force = false } = {}) {
 
 export async function fetchQuizByTitle(title, choiceCounts, pin, quizId) {
   const counts = Array.isArray(choiceCounts) ? choiceCounts : [];
-  const cacheKey = cacheKeyForTitle(title, counts);
+  const cacheKey = title ? cacheKeyForTitle(title, counts) : cacheKeyForCounts(counts);
+
   if (cacheByTitle.has(cacheKey)) {
     const cached = cacheByTitle.get(cacheKey);
     if (pin) {
@@ -102,7 +119,7 @@ export async function fetchQuizByTitle(title, choiceCounts, pin, quizId) {
     return cached;
   }
 
-  const inflightKey = quizId ? `id:${quizId}` : `title:${cacheKey}`;
+  const inflightKey = quizId ? `id:${quizId}` : counts.length ? `lookup:${cacheKey}` : `title:${cacheKey}`;
   if (inflight.has(inflightKey)) {
     return inflight.get(inflightKey);
   }
@@ -111,8 +128,11 @@ export async function fetchQuizByTitle(title, choiceCounts, pin, quizId) {
     const params = new URLSearchParams();
     if (quizId) {
       params.set("quizId", String(quizId));
-    } else {
-      params.set("title", String(title || ""));
+    }
+    if (title) {
+      params.set("title", String(title));
+    }
+    if (counts.length) {
       params.set("counts", counts.join(","));
     }
     const data = await fetchQuizApi(params.toString());
@@ -148,11 +168,15 @@ export function prefetchQuizAnswers(pin, { force = false } = {}) {
   return promise;
 }
 
-export function resolveChoice(type, numChoices, quizQuestionIndex, quizData, pin) {
+export function resolveChoice(type, numChoices, quizQuestionIndex, quizData, pin, blockIndex) {
   const normalizedType = String(type || "quiz").toLowerCase();
+  const lookupIndex = blockIndex != null ? blockIndex : quizQuestionIndex;
+  const answerEntry =
+    (blockIndex != null && quizData?.answersByBlockIndex?.[blockIndex]) ||
+    quizData?.answers?.[quizQuestionIndex];
+
   let correctIndices =
-    quizData?.answers?.[quizQuestionIndex]?.correctIndices ||
-    getLearnedCorrectIndices(pin, quizQuestionIndex);
+    answerEntry?.correctIndices || getLearnedCorrectIndices(pin, lookupIndex);
 
   if (!correctIndices?.length) {
     return Math.floor(Math.random() * Math.max(numChoices, 1));

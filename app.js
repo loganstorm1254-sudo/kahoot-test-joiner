@@ -238,7 +238,7 @@ async function applyQuizAnswersToAll(joinersList, quizAnswers) {
 }
 
 async function loadQuizAnswersByTitle(pin, title, choiceCounts, activeSession, quizId) {
-  if ((!title && !quizId) || !choiceCounts?.length) {
+  if (!choiceCounts?.length) {
     return null;
   }
 
@@ -350,11 +350,16 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
         if (fetched?.answers?.length) {
           quizAnswers = fetched;
           await applyQuizAnswersToAll(joiners, fetched);
-          setStatus(`Smart mode: ${fetched.answers.length} answers loaded for “${title}”`);
+          const label = fetched.title || title || "quiz";
+          setStatus(`Smart mode: ${fetched.answers.length} answers loaded for “${label}”`);
           return;
         }
 
-        setStatus(`Playing “${title}” — learning answers as they’re revealed`);
+        setStatus(
+          title
+            ? `Could not find answers for “${title}” — guessing until revealed`
+            : "Could not find answers for this layout — guessing until revealed",
+        );
       },
       onLearnedAnswer: ({ pin: learnedPin, quizQuestionIndex, correctChoices }) => {
         if (activeSession !== session) {

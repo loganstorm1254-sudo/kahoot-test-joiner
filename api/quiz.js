@@ -62,11 +62,15 @@ function getChoiceCount(question) {
 
 function extractAnswers(questions) {
   const answers = [];
-  for (const question of questions || []) {
+  const answersByBlockIndex = [];
+
+  for (let blockIndex = 0; blockIndex < (questions || []).length; blockIndex += 1) {
+    const question = questions[blockIndex];
     const type = question.type || "quiz";
     const choices = question.choices || [];
 
     if (!isAnswerableType(type) || choices.length === 0) {
+      answersByBlockIndex[blockIndex] = null;
       continue;
     }
 
@@ -77,7 +81,7 @@ function extractAnswers(questions) {
       }
     }
 
-    answers.push({
+    const entry = {
       type,
       layout: question.layout || question.questionFormat || "",
       numChoices: choices.length || question.numberOfAnswers || 4,
@@ -86,9 +90,17 @@ function extractAnswers(questions) {
         .filter((choice) => choice?.correct && choice?.answer)
         .map((choice) => stripHtml(choice.answer))
         .filter(Boolean),
-    });
+    };
+
+    answersByBlockIndex[blockIndex] = entry;
+    answers.push(entry);
   }
-  return answers;
+
+  return {
+    answers,
+    answersByBlockIndex,
+    blockCount: (questions || []).length,
+  };
 }
 
 function matchesQuizLayout(questions, choiceCounts) {
@@ -165,26 +177,64 @@ function titleScore(searchTitle, candidateTitle) {
 function buildSearchQueries(title) {
   const cleaned = stripHtml(title);
   const queries = new Set();
-  if (cleaned) {
-    queries.add(cleaned);
+  if (!cleaned) {
+    return [];
   }
 
-  const normalized = normalizeTitle(cleaned);
-  if (normalized) {
-    queries.add(normalized);
-    const words = normalized.split(" ").filter((word) => word.length > 2);
-    if (words.length >= 2) {
-      queries.add(words.join(" "));
-      queries.add(words.slice(0, 3).join(" "));
+  const apostropheVariants = [
+    cleaned,
+    cleaned.replace(/'/g, "\u2019"),
+    cleaned.replace(/[\u2019']/g, ""),
+  ];
+
+  for (const variant of apostropheVariants) {
+    if (!variant) {
+      continue;
     }
-    for (const word of words) {
-      if (word.length >= 4) {
-        queries.add(word);
+    queries.add(variant);
+
+    const normalized = normalizeTitle(variant);
+    if (normalized) {
+      queries.add(normalized);
+      const words = normalized.split(" ").filter((word) => word.length > 2);
+      if (words.length >= 2) {
+        queries.add(words.join(" "));
+        queries.add(words.slice(-2).join(" "));
+        queries.add(words.slice(0, 3).join(" "));
+      }
+      for (const word of words) {
+        if (word.length >= 4) {
+          queries.add(word);
+        }
       }
     }
   }
 
   return [...queries].filter(Boolean);
+}
+
+function buildLayoutSearchQueries(choiceCounts) {
+  const queries = new Set(["quiz", "review", "test"]);
+  const positive = choiceCounts.filter((count) => count != null && count > 0);
+
+  if (positive.length > 0 && positive.every((count) => count === 2)) {
+    queries.add("true false");
+    queries.add("yes no");
+    queries.add("shape");
+    queries.add("shapes");
+  }
+
+  if (positive.length > 0 && positive.every((count) => count === 4)) {
+    queries.add("trivia");
+    queries.add("general knowledge");
+  }
+
+  if (choiceCounts.some((count) => count === 0)) {
+    queries.add("shape identifier");
+    queries.add("shapes");
+  }
+
+  return [...queries];
 }
 
 async function fetchJson(url, headers) {
@@ -199,6 +249,21 @@ async function fetchJson(url, headers) {
   }
 }
 
+function buildQuizResult(quiz, candidate, title, source) {
+  const extracted = extractAnswers(quiz.questions);
+  if (!extracted.answers.some((entry) => entry.correctIndices?.length)) {
+    return null;
+  }
+
+  return {
+    quizId: candidate?.uuid || quiz.uuid,
+    title: quiz.title || candidate?.cardTitle || title || "",
+    ...extracted,
+    source,
+    matchScore: candidate?.score ?? 0,
+  };
+}
+
 async function fetchQuizByUuid(quizId) {
   const endpoints = [
     ["https://create.kahoot.it", kahootHeaders("https://create.kahoot.it")],
@@ -210,14 +275,9 @@ async function fetchQuizByUuid(quizId) {
     if (!quiz?.questions?.length) {
       continue;
     }
-    const answers = extractAnswers(quiz.questions);
-    if (answers.some((entry) => entry.correctIndices?.length)) {
-      return {
-        quizId,
-        title: quiz.title || "",
-        answers,
-        source: "uuid",
-      };
+    const result = buildQuizResult(quiz, { uuid: quizId }, quiz.title, "uuid");
+    if (result) {
+      return result;
     }
   }
 
@@ -240,13 +300,8 @@ async function searchKahootCatalog(query, origin) {
   return data?.entities || [];
 }
 
-async function searchQuizByTitle(title, choiceCounts) {
+async function collectCandidates(queries, title, choiceCounts) {
   const normalizedTitle = normalizeTitle(title);
-  if (!normalizedTitle && !choiceCounts?.length) {
-    return null;
-  }
-
-  const queries = buildSearchQueries(title);
   const seen = new Set();
   const candidates = [];
 
@@ -262,22 +317,21 @@ async function searchQuizByTitle(title, choiceCounts) {
         seen.add(uuid);
 
         const cardTitle = card.title || "";
-        const score = titleScore(title, cardTitle);
-        if (score < 0.34 && normalizeTitle(cardTitle) !== normalizedTitle) {
+        const score = title ? titleScore(title, cardTitle) : 0;
+        if (title && score < 0.34 && normalizeTitle(cardTitle) !== normalizedTitle) {
           continue;
         }
 
-        candidates.push({
-          uuid,
-          cardTitle,
-          score,
-        });
+        candidates.push({ uuid, cardTitle, score });
       }
     }
   }
 
   candidates.sort((left, right) => right.score - left.score);
+  return candidates;
+}
 
+async function pickMatchingQuiz(candidates, choiceCounts, title, source) {
   const exactMatches = [];
   const layoutMatches = [];
 
@@ -286,20 +340,14 @@ async function searchQuizByTitle(title, choiceCounts) {
       `https://create.kahoot.it/rest/kahoots/${encodeURIComponent(candidate.uuid)}`,
       kahootHeaders("https://create.kahoot.it"),
     );
-    if (!quiz?.questions?.length) {
-      continue;
-    }
-    if (!matchesQuizLayout(quiz.questions, choiceCounts)) {
+    if (!quiz?.questions?.length || !matchesQuizLayout(quiz.questions, choiceCounts)) {
       continue;
     }
 
-    const result = {
-      quizId: candidate.uuid,
-      title: quiz.title || candidate.cardTitle || title,
-      answers: extractAnswers(quiz.questions),
-      source: "title-search",
-      matchScore: candidate.score,
-    };
+    const result = buildQuizResult(quiz, candidate, title, source);
+    if (!result) {
+      continue;
+    }
 
     if (candidate.score >= 0.99) {
       exactMatches.push(result);
@@ -309,6 +357,62 @@ async function searchQuizByTitle(title, choiceCounts) {
   }
 
   return exactMatches[0] || layoutMatches[0] || null;
+}
+
+async function searchQuizByTitle(title, choiceCounts) {
+  if (!title || !choiceCounts?.length) {
+    return null;
+  }
+
+  const candidates = await collectCandidates(buildSearchQueries(title), title, choiceCounts);
+  return pickMatchingQuiz(candidates, choiceCounts, title, "title-search");
+}
+
+async function searchQuizByLayout(choiceCounts) {
+  if (!choiceCounts?.length) {
+    return null;
+  }
+
+  const candidates = await collectCandidates(buildLayoutSearchQueries(choiceCounts), "", choiceCounts);
+  const matches = [];
+
+  for (const candidate of candidates) {
+    const quiz = await fetchJson(
+      `https://create.kahoot.it/rest/kahoots/${encodeURIComponent(candidate.uuid)}`,
+      kahootHeaders("https://create.kahoot.it"),
+    );
+    if (!quiz?.questions?.length || !matchesQuizLayout(quiz.questions, choiceCounts)) {
+      continue;
+    }
+    const result = buildQuizResult(quiz, candidate, quiz.title, "layout-search");
+    if (result) {
+      matches.push(result);
+    }
+  }
+
+  return matches[0] || null;
+}
+
+async function resolveQuizAnswers({ title, choiceCounts, quizId }) {
+  if (quizId) {
+    const byId = await fetchQuizByUuid(quizId);
+    if (byId) {
+      return byId;
+    }
+  }
+
+  if (title && choiceCounts?.length) {
+    const byTitle = await searchQuizByTitle(title, choiceCounts);
+    if (byTitle) {
+      return byTitle;
+    }
+  }
+
+  if (choiceCounts?.length) {
+    return searchQuizByLayout(choiceCounts);
+  }
+
+  return null;
 }
 
 async function fetchQuizByPin(pin) {
@@ -344,16 +448,8 @@ export async function GET(request) {
   const counts = parseChoiceCounts(url.searchParams.get("counts"));
 
   try {
-    if (quizId) {
-      const result = await fetchQuizByUuid(quizId);
-      if (!result) {
-        return Response.json({ error: "Could not load quiz by ID." }, { status: 404, headers: corsHeaders() });
-      }
-      return Response.json(result, { headers: corsHeaders() });
-    }
-
-    if (title) {
-      const result = await searchQuizByTitle(title, counts);
+    if (quizId || title || counts.length) {
+      const result = await resolveQuizAnswers({ title, choiceCounts: counts, quizId });
       if (!result) {
         return Response.json(
           { error: "Could not find a public quiz matching that title and question layout." },

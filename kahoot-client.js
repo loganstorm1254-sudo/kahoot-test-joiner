@@ -213,10 +213,11 @@ export class KahootJoiner {
     this.liveQuizTitle = "";
     this.liveQuizId = "";
     this.liveChoiceCounts = [];
+    this.quizLookupStarted = false;
   }
 
   applyQuizAnswers(quizAnswers) {
-    if (quizAnswers?.answers?.length) {
+    if (quizAnswers?.answers?.length || quizAnswers?.answersByBlockIndex?.length) {
       this.quizAnswers = quizAnswers;
     }
   }
@@ -521,16 +522,28 @@ export class KahootJoiner {
       ];
     }
 
-    return resolveChoice(type, numChoices, quizIndex, this.quizAnswers, this.pin);
+    return resolveChoice(
+      type,
+      numChoices,
+      quizIndex,
+      this.quizAnswers,
+      this.pin,
+      this.currentQuestionIndex,
+    );
   }
 
   hasKnownAnswer() {
+    const blockIndex = this.currentQuestionIndex;
     const quizIndex =
       this.activeQuizQuestionIndex >= 0
         ? this.activeQuizQuestionIndex
         : this.currentQuestionIndex;
+    const blockAnswer = this.quizAnswers?.answersByBlockIndex?.[blockIndex];
+    const compactAnswer = this.quizAnswers?.answers?.[quizIndex];
     return Boolean(
-      this.quizAnswers?.answers?.[quizIndex]?.correctIndices?.length ||
+      blockAnswer?.correctIndices?.length ||
+        compactAnswer?.correctIndices?.length ||
+        getLearnedCorrectIndices(this.pin, blockIndex)?.length ||
         getLearnedCorrectIndices(this.pin, quizIndex)?.length,
     );
   }
@@ -650,7 +663,8 @@ export class KahootJoiner {
     }
 
     const questionIndex = this.currentQuestionIndex;
-    const choice = this.buildSmartChoice(this.currentQuestionType, this.currentNumChoices);
+    const questionType = this.currentQuestionType;
+    const numChoices = this.currentNumChoices;
     const sinceStart = Date.now() - (this.questionStartTime || 0);
     const minWait = Math.max(200 - sinceStart, 0);
     const answerDelay = minWait + 80 + Math.floor(Math.random() * 320);
@@ -660,24 +674,44 @@ export class KahootJoiner {
     }
 
     this.answerTimer = setTimeout(() => {
-      if (!this.closed && runId === this.runId && this.questionActive) {
-        if (this.lastAnsweredIndex === questionIndex) {
-          return;
-        }
-        this.lastAnsweredIndex = questionIndex;
-        const mode = this.hasKnownAnswer() ? "known answer" : "guess";
-        this.status(
-          `Answering block ${questionIndex} → ${typeof choice === "number" ? `choice ${choice + 1}` : choice} (${mode})`,
-        );
-        this.sendAnswerModern(choice);
-        if (!this.usesGameBlocks) {
-          setTimeout(() => {
-            if (!this.closed && runId === this.runId) {
-              this.sendAnswerLegacy(typeof choice === "number" ? choice : 0);
+      const answerWhenReady = async () => {
+        if (!this.closed && runId === this.runId && this.questionActive) {
+          if (this.lastAnsweredIndex === questionIndex) {
+            return;
+          }
+
+          if (!this.hasKnownAnswer()) {
+            const deadline = Date.now() + 5000;
+            while (!this.hasKnownAnswer() && Date.now() < deadline) {
+              if (this.closed || runId !== this.runId || !this.questionActive) {
+                return;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 120));
             }
-          }, 80);
+          }
+
+          if (this.lastAnsweredIndex === questionIndex) {
+            return;
+          }
+
+          this.lastAnsweredIndex = questionIndex;
+          const choice = this.buildSmartChoice(questionType, numChoices);
+          const mode = this.hasKnownAnswer() ? "known answer" : "guess";
+          this.status(
+            `Answering block ${questionIndex} → ${typeof choice === "number" ? `choice ${choice + 1}` : choice} (${mode})`,
+          );
+          this.sendAnswerModern(choice);
+          if (!this.usesGameBlocks) {
+            setTimeout(() => {
+              if (!this.closed && runId === this.runId) {
+                this.sendAnswerLegacy(typeof choice === "number" ? choice : 0);
+              }
+            }, 80);
+          }
         }
-      }
+      };
+
+      answerWhenReady();
     }, answerDelay);
   }
 
@@ -718,6 +752,45 @@ export class KahootJoiner {
     }, 1200);
   }
 
+  maybeRequestQuizAnswers(content, runId) {
+    if (this.closed || runId !== this.runId || this.quizLookupStarted) {
+      return;
+    }
+
+    const counts = Array.isArray(content.quizQuestionAnswers)
+      ? content.quizQuestionAnswers
+      : this.liveChoiceCounts;
+    if (!counts.length) {
+      return;
+    }
+
+    const title =
+      this.liveQuizTitle ||
+      content.name ||
+      content.quizName ||
+      content.quizTitle ||
+      content.title ||
+      "";
+    const quizId =
+      this.liveQuizId || content.quizId || content.quizUuid || content.uuid || "";
+
+    this.liveChoiceCounts = counts;
+    if (title) {
+      this.liveQuizTitle = title;
+    }
+    if (quizId) {
+      this.liveQuizId = quizId;
+    }
+
+    this.quizLookupStarted = true;
+    this.onQuizStart({
+      title,
+      quizId,
+      choiceCounts: counts,
+      pin: this.pin,
+    });
+  }
+
   handleQuizStart(content, runId) {
     if (this.closed || runId !== this.runId) {
       return;
@@ -732,20 +805,19 @@ export class KahootJoiner {
     const quizId = content.quizId || content.quizUuid || content.uuid || "";
     const counts = Array.isArray(content.quizQuestionAnswers) ? content.quizQuestionAnswers : [];
 
-    this.liveQuizTitle = title;
-    this.liveQuizId = quizId;
-    this.liveChoiceCounts = counts;
+    this.liveQuizTitle = title || this.liveQuizTitle;
+    this.liveQuizId = quizId || this.liveQuizId;
+    this.liveChoiceCounts = counts.length ? counts : this.liveChoiceCounts;
 
-    if ((!title && !quizId) || !counts.length) {
-      return;
-    }
-
-    this.onQuizStart({
-      title,
-      quizId,
-      choiceCounts: counts,
-      pin: this.pin,
-    });
+    this.maybeRequestQuizAnswers(
+      {
+        ...content,
+        name: title,
+        quizId,
+        quizQuestionAnswers: this.liveChoiceCounts,
+      },
+      runId,
+    );
   }
 
   handlePlayerMessage(data, runId) {
@@ -813,10 +885,11 @@ export class KahootJoiner {
       }
       const correctChoices = content.correctChoices || content.correctAnswers;
       if (this.activeQuizQuestionIndex >= 0 && Array.isArray(correctChoices) && correctChoices.length) {
-        rememberCorrectChoices(this.pin, this.activeQuizQuestionIndex, correctChoices);
+        const learnedIndex = this.currentQuestionIndex;
+        rememberCorrectChoices(this.pin, learnedIndex, correctChoices);
         this.onLearnedAnswer({
           pin: this.pin,
-          quizQuestionIndex: this.activeQuizQuestionIndex,
+          quizQuestionIndex: learnedIndex,
           correctChoices,
         });
       }
@@ -824,6 +897,9 @@ export class KahootJoiner {
     }
 
     if (id === 1) {
+      if (content.quizQuestionAnswers?.length && !this.quizAnswers) {
+        this.maybeRequestQuizAnswers(content, runId);
+      }
       return;
     }
 
