@@ -1,33 +1,63 @@
 const learnedAnswersByPin = new Map();
+const cacheByPin = new Map();
+const inflightByPin = new Map();
+
+export function normalizePin(pin) {
+  return String(pin || "").replace(/\s+/g, "");
+}
+
+export function isValidPin(pin) {
+  return /^\d{6,}$/.test(normalizePin(pin));
+}
 
 export function rememberCorrectChoices(pin, quizQuestionIndex, correctChoices) {
-  if (!pin || quizQuestionIndex == null || quizQuestionIndex < 0) {
+  const normalizedPin = normalizePin(pin);
+  if (!normalizedPin || quizQuestionIndex == null || quizQuestionIndex < 0) {
     return;
   }
   if (!Array.isArray(correctChoices) || correctChoices.length === 0) {
     return;
   }
 
-  let pinCache = learnedAnswersByPin.get(pin);
+  let pinCache = learnedAnswersByPin.get(normalizedPin);
   if (!pinCache) {
     pinCache = new Map();
-    learnedAnswersByPin.set(pin, pinCache);
+    learnedAnswersByPin.set(normalizedPin, pinCache);
   }
 
   pinCache.set(quizQuestionIndex, [...correctChoices]);
 }
 
 export function getLearnedCorrectIndices(pin, quizQuestionIndex) {
-  const pinCache = learnedAnswersByPin.get(pin);
+  const pinCache = learnedAnswersByPin.get(normalizePin(pin));
   return pinCache?.get(quizQuestionIndex) || null;
 }
 
 export function clearLearnedAnswers(pin) {
-  learnedAnswersByPin.delete(pin);
+  learnedAnswersByPin.delete(normalizePin(pin));
 }
 
-export async function fetchQuizAnswers(pin) {
-  const response = await fetch(`/api/quiz?pin=${encodeURIComponent(pin)}`);
+export function getCachedQuizAnswers(pin) {
+  return cacheByPin.get(normalizePin(pin)) || null;
+}
+
+export function clearQuizCache(pin) {
+  const normalizedPin = normalizePin(pin);
+  cacheByPin.delete(normalizedPin);
+  inflightByPin.delete(normalizedPin);
+}
+
+export async function fetchQuizAnswers(pin, { force = false } = {}) {
+  const normalizedPin = normalizePin(pin);
+  if (!isValidPin(normalizedPin)) {
+    return null;
+  }
+
+  if (!force && cacheByPin.has(normalizedPin)) {
+    return cacheByPin.get(normalizedPin);
+  }
+
+  const response = await fetch(`/api/quiz?pin=${encodeURIComponent(normalizedPin)}`);
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok || data.error) {
@@ -38,7 +68,32 @@ export async function fetchQuizAnswers(pin) {
     return null;
   }
 
+  cacheByPin.set(normalizedPin, data);
   return data;
+}
+
+export function prefetchQuizAnswers(pin, { force = false } = {}) {
+  const normalizedPin = normalizePin(pin);
+  if (!isValidPin(normalizedPin)) {
+    return Promise.resolve(null);
+  }
+
+  if (!force && cacheByPin.has(normalizedPin)) {
+    return Promise.resolve(cacheByPin.get(normalizedPin));
+  }
+
+  const inflight = inflightByPin.get(normalizedPin);
+  if (inflight) {
+    return inflight;
+  }
+
+  const promise = fetchQuizAnswers(normalizedPin, { force })
+    .finally(() => {
+      inflightByPin.delete(normalizedPin);
+    });
+
+  inflightByPin.set(normalizedPin, promise);
+  return promise;
 }
 
 export function resolveChoice(type, numChoices, quizQuestionIndex, quizData, pin) {

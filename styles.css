@@ -169,3 +169,15 @@ button:active:not(:disabled) {
   font-size: 0.95rem;
   min-height: 2.5rem;
 }
+
+.quiz-result {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f5f0ff;
+  border: 1px solid #d8c7ff;
+  color: #2f1b57;
+  text-align: center;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}

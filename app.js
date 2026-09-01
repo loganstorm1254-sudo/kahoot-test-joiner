@@ -1,6 +1,13 @@
 import { KahootJoiner } from "./kahoot-client.js";
 import { generateRandomName, generateUniqueNames } from "./name-generator.js";
-import { clearLearnedAnswers, fetchQuizAnswers } from "./quiz-answers.js";
+import {
+  clearLearnedAnswers,
+  clearQuizCache,
+  getCachedQuizAnswers,
+  isValidPin,
+  normalizePin,
+  prefetchQuizAnswers,
+} from "./quiz-answers.js";
 
 const pinInput = document.getElementById("pin");
 const nameInput = document.getElementById("name");
@@ -11,6 +18,7 @@ const autoAnswerCheck = document.getElementById("auto-answer");
 const joinButton = document.getElementById("join");
 const disconnectButton = document.getElementById("disconnect");
 const statusEl = document.getElementById("status");
+const quizResultEl = document.getElementById("quiz-result");
 
 let session = 0;
 let joiners = [];
@@ -19,6 +27,10 @@ let joinedCount = 0;
 let failedCount = 0;
 let connected = false;
 let lastError = "";
+let prefetchTimer = null;
+let prefetchRetryTimer = null;
+let lastPrefetchedPin = "";
+let gameEndResults = [];
 
 function getPlayerCount() {
   return Math.max(1, Math.min(100, Math.round(Number(countSlider.value))));
@@ -41,6 +53,11 @@ function setConnected(value) {
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function setQuizResult(message) {
+  quizResultEl.textContent = message;
+  quizResultEl.hidden = !message;
 }
 
 function updateBatchStatus() {
@@ -80,13 +97,136 @@ function buildNicknames(count, baseName, useRandomNames) {
   return Array.from({ length: count }, (_, index) => `${baseName}${index + 1}`);
 }
 
+function formatPrefetchStatus(pin, quizAnswers) {
+  if (!isValidPin(pin)) {
+    return "Enter a PIN to join";
+  }
+  if (!autoAnswerCheck.checked) {
+    return "Enter PIN and click Enter to join";
+  }
+  if (quizAnswers?.answers?.length) {
+    const title = quizAnswers.title ? ` (“${quizAnswers.title}”)` : "";
+    return `${quizAnswers.answers.length} answers ready${title} — click Enter when the host starts`;
+  }
+  return "Fetching quiz answers in the background… (start the host game if this stays empty)";
+}
+
+async function refreshPrefetchStatus(pin, { force = false } = {}) {
+  if (!autoAnswerCheck.checked || !isValidPin(pin) || connected) {
+    return null;
+  }
+
+  const quizAnswers = await prefetchQuizAnswers(pin, { force });
+  if (!connected) {
+    setStatus(formatPrefetchStatus(pin, quizAnswers));
+  }
+  return quizAnswers;
+}
+
+function schedulePrefetch(pin) {
+  const normalizedPin = normalizePin(pin);
+  if (prefetchTimer) {
+    clearTimeout(prefetchTimer);
+  }
+
+  prefetchTimer = setTimeout(() => {
+    prefetchTimer = null;
+    if (connected || !autoAnswerCheck.checked) {
+      return;
+    }
+
+    if (!isValidPin(normalizedPin)) {
+      setStatus("Enter a PIN to join");
+      return;
+    }
+
+    if (normalizedPin !== lastPrefetchedPin) {
+      clearQuizCache(lastPrefetchedPin);
+      lastPrefetchedPin = normalizedPin;
+    }
+
+    refreshPrefetchStatus(normalizedPin);
+  }, 350);
+}
+
+function startPrefetchRetryLoop() {
+  stopPrefetchRetryLoop();
+  prefetchRetryTimer = setInterval(() => {
+    if (connected || !autoAnswerCheck.checked) {
+      return;
+    }
+    const pin = normalizePin(pinInput.value);
+    if (!isValidPin(pin)) {
+      return;
+    }
+    const cached = getCachedQuizAnswers(pin);
+    if (cached?.answers?.length) {
+      setStatus(formatPrefetchStatus(pin, cached));
+      return;
+    }
+    refreshPrefetchStatus(pin, { force: true });
+  }, 8000);
+}
+
+function stopPrefetchRetryLoop() {
+  if (prefetchRetryTimer) {
+    clearInterval(prefetchRetryTimer);
+    prefetchRetryTimer = null;
+  }
+}
+
+function updateQuizEndSummary(activeSession) {
+  if (activeSession !== session || gameEndResults.length === 0) {
+    return;
+  }
+
+  const winners = gameEndResults.filter((result) => result.won);
+  const finishedCount = gameEndResults.length;
+  const expected = joinedCount;
+
+  if (winners.length > 0) {
+    const lines = winners.map(
+      (winner) =>
+        `${winner.nickname} — rank #${winner.rank ?? 1}, ${winner.totalScore} pts (${winner.correctCount} correct)`,
+    );
+    setQuizResult(`Your bot won! ${lines.join(" · ")}`);
+    setStatus(`Quiz finished — ${finishedCount}/${expected} bots reported`);
+    return;
+  }
+
+  if (expected > 0 && finishedCount >= expected) {
+    const best = [...gameEndResults].sort((left, right) => {
+      const leftRank = left.rank ?? Number.MAX_SAFE_INTEGER;
+      const rightRank = right.rank ?? Number.MAX_SAFE_INTEGER;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      return right.totalScore - left.totalScore;
+    })[0];
+
+    if (best) {
+      setQuizResult(
+        `None of your bots won. Best: ${best.nickname} — rank #${best.rank ?? "?"}, ${best.totalScore} pts`,
+      );
+    } else {
+      setQuizResult("Quiz finished — none of your bots won.");
+    }
+    setStatus(`Quiz finished — ${finishedCount}/${expected} bots reported`);
+    return;
+  }
+
+  setStatus(`Quiz ending… ${finishedCount}/${expected || "?"} bots reported`);
+}
+
 async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
   const delay = nicknames.length > 20 ? 150 : 700;
-  let quizAnswers = null;
+  let quizAnswers = getCachedQuizAnswers(pin);
 
   if (autoAnswer) {
-    setStatus("Loading quiz answers…");
-    quizAnswers = await fetchQuizAnswers(pin);
+    if (!quizAnswers?.answers?.length) {
+      setStatus("Loading quiz answers…");
+      quizAnswers = await prefetchQuizAnswers(pin, { force: true });
+    }
     if (activeSession !== session) {
       return;
     }
@@ -134,6 +274,15 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
         }
         setStatus(message);
       },
+      onGameEnd: (result) => {
+        if (activeSession !== session) {
+          return;
+        }
+        if (!gameEndResults.some((entry) => entry.nickname === result.nickname)) {
+          gameEndResults.push(result);
+        }
+        updateQuizEndSummary(activeSession);
+      },
     });
 
     joiners.push(joiner);
@@ -165,7 +314,7 @@ function onJoin() {
   const useRandomNames = randomNamesCheck.checked;
   const autoAnswer = autoAnswerCheck.checked;
 
-  if (!/^\d{6,}$/.test(pin)) {
+  if (!isValidPin(pin)) {
     alert("Please enter a valid Kahoot game PIN.");
     return;
   }
@@ -182,7 +331,10 @@ function onJoin() {
   failedCount = 0;
   lastError = "";
   joiners = [];
-  clearLearnedAnswers(pin.replace(/\s+/g, ""));
+  gameEndResults = [];
+  setQuizResult("");
+  clearLearnedAnswers(pin);
+  stopPrefetchRetryLoop();
 
   const nicknames = buildNicknames(count, baseName || "test", useRandomNames);
 
@@ -204,6 +356,8 @@ function onDisconnect() {
   }
 
   setStatus("Disconnected");
+  startPrefetchRetryLoop();
+  schedulePrefetch(pinInput.value);
 }
 
 function onRandomNamesToggle() {
@@ -215,10 +369,35 @@ function onRandomNamesToggle() {
   }
 }
 
+function onPinInput() {
+  if (connected) {
+    return;
+  }
+  schedulePrefetch(pinInput.value);
+}
+
+function onAutoAnswerToggle() {
+  if (connected) {
+    return;
+  }
+  if (autoAnswerCheck.checked) {
+    startPrefetchRetryLoop();
+    schedulePrefetch(pinInput.value);
+  } else {
+    stopPrefetchRetryLoop();
+    setStatus("Enter PIN and click Enter to join");
+  }
+}
+
 countSlider.addEventListener("input", updateCountLabel);
 randomNamesCheck.addEventListener("change", onRandomNamesToggle);
+autoAnswerCheck.addEventListener("change", onAutoAnswerToggle);
+pinInput.addEventListener("input", onPinInput);
+pinInput.addEventListener("blur", onPinInput);
 joinButton.addEventListener("click", onJoin);
 disconnectButton.addEventListener("click", onDisconnect);
 
 updateCountLabel();
 onRandomNamesToggle();
+startPrefetchRetryLoop();
+schedulePrefetch(pinInput.value);

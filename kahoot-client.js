@@ -161,6 +161,7 @@ export class KahootJoiner {
     this.onJoined = () => {};
     this.onError = () => {};
     this.onStatus = () => {};
+    this.onGameEnd = () => {};
 
     this.ws = null;
     this.clientId = null;
@@ -187,13 +188,17 @@ export class KahootJoiner {
     this.blockToQuizIndex = new Map();
     this.nextQuizQuestionIndex = 0;
     this.activeQuizQuestionIndex = -1;
+    this.podiumMedalType = null;
+    this.gameEndReported = false;
+    this.pendingGameEnd = null;
+    this.gameEndTimer = null;
   }
 
   status(message) {
     this.onStatus(message);
   }
 
-  start({ pin, nickname, autoAnswer, onJoined, onError, onStatus, quizAnswers }) {
+  start({ pin, nickname, autoAnswer, onJoined, onError, onStatus, onGameEnd, quizAnswers }) {
     this.stop(false);
     this.reset();
 
@@ -204,6 +209,7 @@ export class KahootJoiner {
     this.onJoined = onJoined || (() => {});
     this.onError = onError || (() => {});
     this.onStatus = onStatus || (() => {});
+    this.onGameEnd = onGameEnd || (() => {});
 
     this.runId += 1;
     const runId = this.runId;
@@ -222,6 +228,10 @@ export class KahootJoiner {
     if (this.answerTimer) {
       clearTimeout(this.answerTimer);
       this.answerTimer = null;
+    }
+    if (this.gameEndTimer) {
+      clearTimeout(this.gameEndTimer);
+      this.gameEndTimer = null;
     }
 
     const ws = this.ws;
@@ -635,6 +645,53 @@ export class KahootJoiner {
     }, answerDelay);
   }
 
+  reportGameEnd(content) {
+    if (this.gameEndReported) {
+      return;
+    }
+    this.gameEndReported = true;
+    if (this.gameEndTimer) {
+      clearTimeout(this.gameEndTimer);
+      this.gameEndTimer = null;
+    }
+
+    const rank = Number(content.rank);
+    const totalScore = Number(content.totalScore ?? content.score ?? 0);
+    const won = rank === 1 || this.podiumMedalType === "gold";
+
+    this.onGameEnd({
+      nickname: this.nickname,
+      rank: Number.isFinite(rank) ? rank : null,
+      totalScore: Number.isFinite(totalScore) ? totalScore : 0,
+      correctCount: Number(content.correctCount) || 0,
+      playerCount: Number(content.playerCount) || 0,
+      podiumMedalType: this.podiumMedalType,
+      won,
+    });
+  }
+
+  scheduleGameEndReport(runId) {
+    if (this.gameEndTimer) {
+      clearTimeout(this.gameEndTimer);
+    }
+    this.gameEndTimer = setTimeout(() => {
+      this.gameEndTimer = null;
+      if (!this.closed && runId === this.runId && this.pendingGameEnd) {
+        this.reportGameEnd(this.pendingGameEnd);
+      }
+    }, 2500);
+  }
+
+  flushGameEndReport(runId) {
+    if (!this.pendingGameEnd || this.gameEndReported) {
+      return;
+    }
+    if (this.closed || runId !== this.runId) {
+      return;
+    }
+    this.reportGameEnd(this.pendingGameEnd);
+  }
+
   handlePlayerMessage(data, runId) {
     const id = playerMessageId(data);
     const contentStr = typeof data.content === "string" ? data.content : "";
@@ -645,6 +702,29 @@ export class KahootJoiner {
         this.readyToPlay = true;
         this.status(`Joined as ${this.nickname}`);
         this.onJoined(this.nickname);
+      }
+      return;
+    }
+
+    if (id === 3 && contentStr) {
+      try {
+        this.pendingGameEnd = JSON.parse(contentStr);
+        this.scheduleGameEndReport(runId);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    if (id === 13 && contentStr) {
+      try {
+        const podium = JSON.parse(contentStr);
+        if (podium.podiumMedalType) {
+          this.podiumMedalType = podium.podiumMedalType;
+        }
+        this.flushGameEndReport(runId);
+      } catch {
+        // ignore
       }
       return;
     }
