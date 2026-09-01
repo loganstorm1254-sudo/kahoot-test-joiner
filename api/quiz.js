@@ -390,7 +390,11 @@ async function searchQuizByLayout(choiceCounts) {
     }
   }
 
-  return matches[0] || null;
+  if (matches.length === 1) {
+    return matches[0];
+  }
+
+  return null;
 }
 
 async function resolveQuizAnswers({ title, choiceCounts, quizId }) {
