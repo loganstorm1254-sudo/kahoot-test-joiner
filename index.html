@@ -3,66 +3,84 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#1e3a5f" />
     <meta name="color-scheme" content="light" />
-    <title>Joiner</title>
+    <title>ReviseRight — GCSE &amp; A-Level Revision</title>
     <style>
       html,
       body {
         margin: 0;
-        background: #fff !important;
-        color: #1d1d1f !important;
+        background: #f4f7fb !important;
+        color: #1a2b42 !important;
       }
     </style>
-    <link rel="stylesheet" href="/styles.css?v=apple-store-v17" />
+    <link rel="stylesheet" href="/styles.css?v=revision-v1" />
   </head>
   <body>
-    <div class="store-shell">
-      <div class="store-ribbon">
-        <p>For testing only. Use responsibly in games where extra players are allowed.</p>
+    <div class="site-shell">
+      <div class="site-ribbon">
+        <p>Exam season is here — build a revision timetable and stick to it.</p>
       </div>
 
-      <header class="store-header">
-        <div class="store-header-inner">
-          <nav class="store-nav" aria-label="Main">
-            <ul class="store-nav-list" role="tablist">
+      <header class="site-header">
+        <div class="site-header-inner">
+          <a class="site-brand" href="#" data-tab-target="revision" aria-label="ReviseRight home">
+            <span class="site-brand-mark" aria-hidden="true">R</span>
+            <span class="site-brand-text">ReviseRight</span>
+          </a>
+
+          <nav class="site-nav" aria-label="Main">
+            <ul class="site-nav-list" role="tablist">
               <li>
                 <button
-                  id="tab-join"
-                  class="store-nav-link is-active"
+                  id="tab-revision"
+                  class="site-nav-link is-active"
                   type="button"
                   role="tab"
                   aria-selected="true"
-                  aria-controls="panel-join"
-                  data-tab-target="join"
+                  aria-controls="panel-revision"
+                  data-tab-target="revision"
                 >
-                  Join
+                  Subjects
                 </button>
               </li>
               <li>
                 <button
-                  id="tab-features"
-                  class="store-nav-link"
+                  id="tab-practice"
+                  class="site-nav-link"
                   type="button"
                   role="tab"
                   aria-selected="false"
-                  aria-controls="panel-features"
-                  data-tab-target="features"
+                  aria-controls="panel-practice"
+                  data-tab-target="practice"
                 >
-                  Features
+                  Practice
                 </button>
               </li>
               <li>
                 <button
-                  id="tab-qa"
-                  class="store-nav-link"
+                  id="tab-terminal"
+                  class="site-nav-link"
                   type="button"
                   role="tab"
                   aria-selected="false"
-                  aria-controls="panel-qa"
-                  data-tab-target="qa"
+                  aria-controls="panel-terminal"
+                  data-tab-target="terminal"
                 >
-                  Q&amp;A
+                  Terminal
+                </button>
+              </li>
+              <li class="kahoot-nav-item is-hidden" hidden>
+                <button
+                  id="tab-kahoot"
+                  class="site-nav-link site-nav-link-secret"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="panel-kahoot"
+                  data-tab-target="kahoot"
+                >
+                  Kahoot
                 </button>
               </li>
             </ul>
@@ -70,11 +88,165 @@
         </div>
       </header>
 
-      <main class="store-main">
-        <div id="panel-join" class="tab-panel" data-tab-panel="join" role="tabpanel" aria-labelledby="tab-join">
-          <div class="store-pagehead">
-            <h1 class="store-title">Join a live game</h1>
-            <p class="store-lead">Enter a game PIN and choose how many players to add.</p>
+      <main class="site-main">
+        <div
+          id="panel-revision"
+          class="tab-panel"
+          data-tab-panel="revision"
+          role="tabpanel"
+          aria-labelledby="tab-revision"
+        >
+          <div class="page-head">
+            <p class="page-eyebrow">Welcome back, student</p>
+            <h1 class="page-title">Your revision dashboard</h1>
+            <p class="page-lead">Pick a subject, review key topics, and track your progress before the exams.</p>
+          </div>
+
+          <div class="progress-card">
+            <div class="progress-card-top">
+              <span class="progress-label">Weekly goal</span>
+              <span class="progress-value">12 / 20 hours</span>
+            </div>
+            <div class="progress-bar" aria-hidden="true">
+              <span class="progress-fill" style="width: 60%"></span>
+            </div>
+            <p class="progress-note">You're on track. Keep going!</p>
+          </div>
+
+          <div class="subject-grid">
+            <article class="subject-card subject-card-bio">
+              <span class="subject-icon" aria-hidden="true">🧬</span>
+              <h2 class="subject-title">Biology</h2>
+              <p class="subject-copy">Cell structure, genetics, ecology &amp; exam technique.</p>
+              <span class="subject-meta">14 topics · 68% complete</span>
+            </article>
+            <article class="subject-card subject-card-chem">
+              <span class="subject-icon" aria-hidden="true">⚗️</span>
+              <h2 class="subject-title">Chemistry</h2>
+              <p class="subject-copy">Bonding, moles, rates of reaction &amp; organic basics.</p>
+              <span class="subject-meta">11 topics · 54% complete</span>
+            </article>
+            <article class="subject-card subject-card-phys">
+              <span class="subject-icon" aria-hidden="true">⚡</span>
+              <h2 class="subject-title">Physics</h2>
+              <p class="subject-copy">Forces, energy, waves, electricity &amp; particle model.</p>
+              <span class="subject-meta">12 topics · 47% complete</span>
+            </article>
+            <article class="subject-card subject-card-maths">
+              <span class="subject-icon" aria-hidden="true">📐</span>
+              <h2 class="subject-title">Maths</h2>
+              <p class="subject-copy">Algebra, graphs, trigonometry &amp; past-paper drills.</p>
+              <span class="subject-meta">18 topics · 71% complete</span>
+            </article>
+            <article class="subject-card subject-card-eng">
+              <span class="subject-icon" aria-hidden="true">📚</span>
+              <h2 class="subject-title">English</h2>
+              <p class="subject-copy">Poetry analysis, essay planning &amp; quotation banks.</p>
+              <span class="subject-meta">9 topics · 39% complete</span>
+            </article>
+            <article class="subject-card subject-card-hist">
+              <span class="subject-icon" aria-hidden="true">🏛️</span>
+              <h2 class="subject-title">History</h2>
+              <p class="subject-copy">Timelines, source skills &amp; structured long answers.</p>
+              <span class="subject-meta">8 topics · 42% complete</span>
+            </article>
+          </div>
+
+          <section class="tip-section">
+            <h2 class="section-title">Today's study tip</h2>
+            <blockquote class="study-tip">
+              “Revise in 25-minute blocks, then take a 5-minute break. Your brain remembers more when you
+              space it out — not when you cram the night before.”
+            </blockquote>
+          </section>
+        </div>
+
+        <div
+          id="panel-practice"
+          class="tab-panel is-hidden"
+          data-tab-panel="practice"
+          role="tabpanel"
+          aria-labelledby="tab-practice"
+          hidden
+        >
+          <div class="page-head">
+            <h1 class="page-title">Quick practice</h1>
+            <p class="page-lead">Short questions to warm up before a full past paper.</p>
+          </div>
+
+          <section class="practice-card">
+            <p class="practice-tag">Biology · Foundation</p>
+            <h2 class="practice-question">What is the function of mitochondria in a cell?</h2>
+            <ul class="practice-options">
+              <li>Store genetic information</li>
+              <li>Control what enters and leaves the cell</li>
+              <li>Release energy through respiration</li>
+              <li>Make proteins for the cell</li>
+            </ul>
+            <p class="practice-hint">Select an answer to check — more drills coming soon.</p>
+          </section>
+
+          <section class="practice-card">
+            <p class="practice-tag">Maths · Higher</p>
+            <h2 class="practice-question">Solve for x: 3x + 7 = 22</h2>
+            <ul class="practice-options">
+              <li>x = 3</li>
+              <li>x = 5</li>
+              <li>x = 7</li>
+              <li>x = 15</li>
+            </ul>
+            <p class="practice-hint">Show your working in your notebook.</p>
+          </section>
+        </div>
+
+        <div
+          id="panel-terminal"
+          class="tab-panel is-hidden"
+          data-tab-panel="terminal"
+          role="tabpanel"
+          aria-labelledby="tab-terminal"
+          hidden
+        >
+          <div class="page-head page-head-compact">
+            <h1 class="page-title">School terminal</h1>
+            <p class="page-lead">Restricted student shell. Type <code>help</code> to see available commands.</p>
+          </div>
+
+          <div class="terminal-window" id="terminal-window">
+            <div class="terminal-titlebar">
+              <span class="terminal-dot terminal-dot-red" aria-hidden="true"></span>
+              <span class="terminal-dot terminal-dot-yellow" aria-hidden="true"></span>
+              <span class="terminal-dot terminal-dot-green" aria-hidden="true"></span>
+              <span class="terminal-title">student@revise-right — bash</span>
+            </div>
+            <div id="terminal-output" class="terminal-output" aria-live="polite"></div>
+            <form id="terminal-form" class="terminal-input-row" autocomplete="off">
+              <label class="terminal-prompt" for="terminal-input">student@revise-right:~$</label>
+              <input
+                id="terminal-input"
+                class="terminal-input"
+                type="text"
+                spellcheck="false"
+                autocapitalize="off"
+                autocomplete="off"
+                aria-label="Terminal command"
+              />
+            </form>
+          </div>
+        </div>
+
+        <div
+          id="panel-kahoot"
+          class="tab-panel is-hidden"
+          data-tab-panel="kahoot"
+          role="tabpanel"
+          aria-labelledby="tab-kahoot"
+          hidden
+        >
+          <div class="kahoot-reveal">
+            <p class="kahoot-reveal-badge">Secret module unlocked</p>
+            <h1 class="page-title">Join a live game</h1>
+            <p class="page-lead">Enter a game PIN and choose how many players to add.</p>
           </div>
 
           <div class="store-layout store-layout-single">
@@ -97,7 +269,15 @@
                   <legend class="config-legend">Players to join</legend>
                   <div class="count-control">
                     <input id="count" type="range" min="1" max="44" value="1" aria-label="Players to join" />
-                    <input id="count-input" type="number" min="1" max="44" value="1" inputmode="numeric" aria-label="Number of players" />
+                    <input
+                      id="count-input"
+                      type="number"
+                      min="1"
+                      max="44"
+                      value="1"
+                      inputmode="numeric"
+                      aria-label="Number of players"
+                    />
                   </div>
                 </fieldset>
 
@@ -125,120 +305,15 @@
             </section>
           </div>
         </div>
-
-        <div
-          id="panel-features"
-          class="tab-panel is-hidden"
-          data-tab-panel="features"
-          role="tabpanel"
-          aria-labelledby="tab-features"
-          hidden
-        >
-          <div class="store-pagehead">
-            <h1 class="store-title">Features</h1>
-            <p class="store-lead">Built for joining and playing at scale.</p>
-          </div>
-
-          <div class="product-grid">
-            <article class="product-tile">
-              <div class="tile-visual" aria-hidden="true"></div>
-              <h2 class="tile-title">Batch join</h2>
-              <p class="tile-copy">Add up to 44 players with staggered connections so the host stays stable.</p>
-            </article>
-            <article class="product-tile">
-              <div class="tile-visual" aria-hidden="true"></div>
-              <h2 class="tile-title">Auto-answer</h2>
-              <p class="tile-copy">Bots answer instantly when the key is known, or after a quick web search.</p>
-            </article>
-            <article class="product-tile">
-              <div class="tile-visual" aria-hidden="true"></div>
-              <h2 class="tile-title">Smart lookup</h2>
-              <p class="tile-copy">Public quizzes match by title and layout. Private games learn after each reveal.</p>
-            </article>
-            <article class="product-tile">
-              <div class="tile-visual" aria-hidden="true"></div>
-              <h2 class="tile-title">Spaced PINs</h2>
-              <p class="tile-copy">Type naturally — like <strong>123 456</strong>. Formatting is handled for you.</p>
-            </article>
-            <article class="product-tile">
-              <div class="tile-visual" aria-hidden="true"></div>
-              <h2 class="tile-title">Stay connected</h2>
-              <p class="tile-copy">Dropped connections retry automatically and resume answering when possible.</p>
-            </article>
-            <article class="product-tile">
-              <div class="tile-visual" aria-hidden="true"></div>
-              <h2 class="tile-title">End-of-game stats</h2>
-              <p class="tile-copy">See ranks, scores, and which bot finished on top when the quiz ends.</p>
-            </article>
-          </div>
-        </div>
-
-        <div
-          id="panel-qa"
-          class="tab-panel is-hidden"
-          data-tab-panel="qa"
-          role="tabpanel"
-          aria-labelledby="tab-qa"
-          hidden
-        >
-          <div class="store-pagehead">
-            <h1 class="store-title">Frequently Asked Questions</h1>
-            <p class="store-lead">Quick answers before you join a game.</p>
-          </div>
-
-          <section class="faq-section">
-            <details class="faq-block" open>
-              <summary>How do I join?</summary>
-              <p>
-                Enter the host’s PIN, choose how many players to add, then select <strong>Enter</strong>. Use
-                <strong>Leave all</strong> to disconnect every bot.
-              </p>
-            </details>
-            <details class="faq-block">
-              <summary>Does this work on private quizzes?</summary>
-              <p>
-                Yes for joining. Answer lookup works best on public quizzes; private games guess at first, then learn
-                from each reveal.
-              </p>
-            </details>
-            <details class="faq-block">
-              <summary>Why do bots answer at different speeds?</summary>
-              <p>
-                Known answers are sent immediately. When a bot needs to search, it waits briefly so results can come back
-                before submitting.
-              </p>
-            </details>
-            <details class="faq-block">
-              <summary>Can I use my own player names?</summary>
-              <p>
-                Turn off <strong>Random names</strong> and set a base name. Each bot gets a number suffix unless you join
-                only one player.
-              </p>
-            </details>
-            <details class="faq-block">
-              <summary>What does the version line mean?</summary>
-              <p>
-                It shows the build in your browser and whether a newer deploy is available. Hard-refresh if an update is
-                ready.
-              </p>
-            </details>
-            <details class="faq-block">
-              <summary>Will the host know these are bots?</summary>
-              <p>
-                They appear as normal players in the lobby. Use responsibly and only where extra players are allowed.
-              </p>
-            </details>
-          </section>
-        </div>
       </main>
 
-      <footer class="store-footer">
-        <div class="store-footer-inner">
-          <p class="store-footer-note">-test</p>
+      <footer class="site-footer">
+        <div class="site-footer-inner">
+          <p class="site-footer-note">ReviseRight · For study purposes only · -test</p>
         </div>
       </footer>
     </div>
 
-    <script type="module" src="/app.js?v=apple-store-v17"></script>
+    <script type="module" src="/app.js?v=revision-v1"></script>
   </body>
 </html>

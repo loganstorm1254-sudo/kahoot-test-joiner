@@ -704,17 +704,268 @@ function setActiveTab(name) {
     panel.hidden = !isActive;
   }
 
+  if (name === "terminal") {
+    focusTerminalInput();
+  }
+
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-for (const button of document.querySelectorAll("[data-tab-target]")) {
-  button.addEventListener("click", () => {
-    setActiveTab(button.dataset.tabTarget);
-  });
+const KAHOOT_UNLOCK_KEY = "reviseright-kahoot-unlocked";
+const terminalOutput = document.getElementById("terminal-output");
+const terminalForm = document.getElementById("terminal-form");
+const terminalInput = document.getElementById("terminal-input");
+const kahootNavItem = document.querySelector(".kahoot-nav-item");
+
+let kahootUnlocked = sessionStorage.getItem(KAHOOT_UNLOCK_KEY) === "1";
+let terminalBooted = false;
+
+function printTerminalLine(text, className = "") {
+  if (!terminalOutput) {
+    return;
+  }
+  const line = document.createElement("div");
+  line.className = className ? `terminal-line ${className}` : "terminal-line";
+  line.textContent = text;
+  terminalOutput.appendChild(line);
+  terminalOutput.scrollTop = terminalOutput.scrollHeight;
+}
+
+function printTerminalBlock(lines, className = "") {
+  for (const line of lines) {
+    printTerminalLine(line, className);
+  }
+}
+
+function focusTerminalInput() {
+  if (!terminalInput) {
+    return;
+  }
+  window.setTimeout(() => terminalInput.focus(), 50);
+}
+
+function bootTerminal({ force = false } = {}) {
+  if (terminalBooted && !force) {
+    return;
+  }
+  if (!terminalOutput) {
+    return;
+  }
+
+  terminalBooted = true;
+  printTerminalBlock(
+    [
+      "ReviseRight student shell v2.1.0",
+      "Logged in as: student@revise-right",
+      "",
+      "Type 'help' to see commands.",
+      "Hint: teachers hide the best tools in plain sight.",
+      "",
+    ],
+    "terminal-line-muted",
+  );
+}
+
+function revealKahoot({ fromTerminal = false } = {}) {
+  if (kahootUnlocked) {
+    setActiveTab("kahoot");
+    return;
+  }
+
+  kahootUnlocked = true;
+  sessionStorage.setItem(KAHOOT_UNLOCK_KEY, "1");
+  document.body.classList.add("kahoot-unlocked");
+
+  if (kahootNavItem) {
+    kahootNavItem.hidden = false;
+    kahootNavItem.classList.remove("is-hidden");
+  }
+
+  if (fromTerminal) {
+    printTerminalBlock(
+      [
+        "",
+        ">>> ACCESS GRANTED <<<",
+        "Loading secret module...",
+        "  [################] 100%",
+        "",
+        "  _  __    _       _   _       ",
+        " | |/ /   | | __ _| |_| |__   ",
+        " | ' /    | |/ _` | __| '_ \\  ",
+        " | . \\    | | (_| | |_| | | | ",
+        " |_|\\_\\   |_|\\__,_|\\__|_| |_| ",
+        "",
+        "Redirecting to live game joiner...",
+      ],
+      "terminal-line-success",
+    );
+    printTerminalLine("Welcome to the fun part.", "terminal-line-rainbow");
+    window.setTimeout(() => setActiveTab("kahoot"), 900);
+    return;
+  }
+
+  setActiveTab("kahoot");
+}
+
+function runTerminalCommand(rawInput) {
+  const input = rawInput.trim();
+  const command = input.toLowerCase();
+
+  printTerminalLine(`student@revise-right:~$ ${input || ""}`);
+
+  if (!command) {
+    return;
+  }
+
+  if (command === "clear" || command === "cls") {
+    terminalOutput.textContent = "";
+    bootTerminal({ force: true });
+    return;
+  }
+
+  if (command === "help" || command === "?") {
+    printTerminalBlock(
+      [
+        "Available commands:",
+        "  help              Show this message",
+        "  subjects          List revision subjects",
+        "  revise <subject>  Open a study module",
+        "  progress          Show your weekly stats",
+        "  motd              Message of the day",
+        "  whoami            Show current user",
+        "  date              Show today's date",
+        "  clear             Clear the screen",
+        "  kahoot            ???",
+      ],
+      "terminal-line-muted",
+    );
+    return;
+  }
+
+  if (command === "kahoot") {
+    revealKahoot({ fromTerminal: true });
+    return;
+  }
+
+  if (command === "subjects") {
+    printTerminalBlock(
+      [
+        "Registered subjects:",
+        "  biology, chemistry, physics, maths, english, history",
+        "",
+        "Try: revise biology",
+      ],
+      "terminal-line-muted",
+    );
+    return;
+  }
+
+  if (command.startsWith("revise ")) {
+    const subject = command.slice("revise ".length).trim();
+    const known = ["biology", "chemistry", "physics", "maths", "english", "history"];
+    if (!known.includes(subject)) {
+      printTerminalLine(`Unknown subject: ${subject}`, "terminal-line-error");
+      printTerminalLine("Try: revise biology", "terminal-line-muted");
+      return;
+    }
+    printTerminalLine(`Opening ${subject} module...`, "terminal-line-success");
+    printTerminalLine("Just kidding — use the Subjects tab. Or don't.", "terminal-line-warn");
+    return;
+  }
+
+  if (command === "progress") {
+    printTerminalBlock(
+      [
+        "Weekly revision progress:",
+        "  Biology .......... 68%",
+        "  Chemistry ........ 54%",
+        "  Physics .......... 47%",
+        "  Maths ............ 71%",
+        "  English .......... 39%",
+        "  History .......... 42%",
+        "",
+        "Overall: 54% — not bad, not great.",
+      ],
+      "terminal-line-muted",
+    );
+    return;
+  }
+
+  if (command === "motd") {
+    printTerminalLine("Message of the day: Revise little and often. Also, explore every tab.", "terminal-line-warn");
+    return;
+  }
+
+  if (command === "whoami") {
+    printTerminalLine("student@revise-right (year 11, procrastination level: high)", "terminal-line-muted");
+    return;
+  }
+
+  if (command === "date") {
+    printTerminalLine(new Date().toString(), "terminal-line-muted");
+    return;
+  }
+
+  if (command === "sudo kahoot" || command === "sudo su") {
+    printTerminalLine("Nice try. You don't have sudo.", "terminal-line-error");
+    return;
+  }
+
+  if (command === "exam" || command === "exams" || command === "gcse") {
+    printTerminalLine("Deep breath. You've got this. (Maybe check the terminal again.)", "terminal-line-warn");
+    return;
+  }
+
+  printTerminalLine(`Command not found: ${input}`, "terminal-line-error");
+  printTerminalLine("Type 'help' for available commands.", "terminal-line-muted");
+}
+
+function initRevisionSite() {
+  if (kahootUnlocked) {
+    document.body.classList.add("kahoot-unlocked");
+    if (kahootNavItem) {
+      kahootNavItem.hidden = false;
+      kahootNavItem.classList.remove("is-hidden");
+    }
+  }
+
+  for (const button of document.querySelectorAll("[data-tab-target]")) {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      const target = button.dataset.tabTarget;
+      if (target === "kahoot" && !kahootUnlocked) {
+        return;
+      }
+      setActiveTab(target);
+      if (target === "terminal") {
+        bootTerminal();
+      }
+    });
+  }
+
+  const brand = document.querySelector(".site-brand");
+  if (brand) {
+    brand.addEventListener("click", (event) => {
+      event.preventDefault();
+      setActiveTab("revision");
+    });
+  }
+
+  if (terminalForm && terminalInput) {
+    terminalForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      runTerminalCommand(terminalInput.value);
+      terminalInput.value = "";
+    });
+  }
+
+  setActiveTab("revision");
+  bootTerminal();
 }
 
 setPlayerCount(1);
 onRandomNamesToggle();
+initRevisionSite();
 startPrefetchRetryLoop();
 schedulePrefetch(pinInput.value);
 checkForUpdates({ initial: true });
