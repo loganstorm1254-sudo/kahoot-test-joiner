@@ -12,6 +12,7 @@ import {
   rememberCorrectChoices,
 } from "./quiz-answers.js";
 import { CLIENT_BUILD } from "./version.js";
+import { appendActivityLog, appendActivitySteps, clearActivityLog } from "./activity-log.js";
 
 const pinInput = document.getElementById("pin");
 const nameInput = document.getElementById("name");
@@ -363,18 +364,27 @@ function waitForSharedQuizAnswers() {
   return sharedQuizLoadPromise || Promise.resolve(null);
 }
 
-function buildJoinerCallbacks(activeSession, autoAnswer) {
+function buildJoinerCallbacks(activeSession, autoAnswer, nickname) {
   return {
     onStatus: (message) => {
       if (activeSession !== session) {
         return;
       }
+      appendActivityLog(message, { source: nickname });
       if (
         targetCount === 1 ||
-        /Smart mode|Looking up|known answer|quiz answers|google|Googled|learn answers|Private quiz/i.test(message)
+        /Smart mode|Looking up|known answer|quiz answers|google|Googled|learn answers|Private quiz|Answering|Vision|vision|guess/i.test(
+          message,
+        )
       ) {
         setImportantStatus(message);
       }
+    },
+    onActivity: ({ steps }) => {
+      if (activeSession !== session) {
+        return;
+      }
+      appendActivitySteps(steps, { source: nickname });
     },
     onGameEnd: (result) => {
       if (activeSession !== session) {
@@ -446,9 +456,10 @@ function attemptJoin(activeSession, pin, nickname, autoAnswer, quizAnswers) {
           settle({ success: false, aborted: true });
           return;
         }
+        appendActivityLog(message, { source: nickname, level: "error" });
         settle({ success: false, message });
       },
-      ...buildJoinerCallbacks(activeSession, autoAnswer),
+      ...buildJoinerCallbacks(activeSession, autoAnswer, nickname),
     });
 
     joinTimeout = setTimeout(() => {
@@ -509,9 +520,13 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
       return;
     }
     if (quizAnswers?.answers?.length) {
-      setStatus(`Loaded ${quizAnswers.answers.length} answers — joining ${nicknames.length} players…`);
+      const message = `Loaded ${quizAnswers.answers.length} answers — joining ${nicknames.length} players…`;
+      setStatus(message);
+      appendActivityLog(message, { source: "system" });
     } else {
-      setStatus(`Joining ${nicknames.length} players — answers load when the host starts the quiz…`);
+      const message = `Joining ${nicknames.length} players — answers load when the host starts the quiz…`;
+      setStatus(message);
+      appendActivityLog(message, { source: "system", level: "warn" });
     }
   }
 
@@ -595,8 +610,17 @@ function onJoin() {
   resetSharedQuizAnswers();
   clearLearnedAnswers(pin);
   stopPrefetchRetryLoop();
+  clearActivityLog();
 
   const nicknames = buildNicknames(count, baseName || "bot.locker-rover.dev", useRandomNames);
+  appendActivityLog(`Starting batch: ${count} player${count === 1 ? "" : "s"}, PIN ${formatPinForDisplay(pin)}`, {
+    source: "system",
+  });
+  if (autoAnswer) {
+    appendActivityLog("Auto-answer enabled — bots will search Google + vision for image questions", {
+      source: "system",
+    });
+  }
 
   setConnected(true);
   setStatus(`Joining ${count} player${count === 1 ? "" : "s"}...`);
@@ -687,6 +711,10 @@ pinInput.addEventListener("input", onPinInput);
 pinInput.addEventListener("blur", onPinInput);
 joinButton.addEventListener("click", onJoin);
 disconnectButton.addEventListener("click", onDisconnect);
+const clearLogButton = document.getElementById("clear-log");
+if (clearLogButton) {
+  clearLogButton.addEventListener("click", () => clearActivityLog());
+}
 
 const viewDecoy = document.getElementById("view-decoy");
 const viewJoiner = document.getElementById("view-joiner");

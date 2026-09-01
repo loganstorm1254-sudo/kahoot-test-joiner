@@ -11,6 +11,75 @@ import {
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
+function stripHtml(value) {
+  return String(value || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeImageUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) {
+    return "";
+  }
+  if (value.startsWith("//")) {
+    return `https:${value}`;
+  }
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+  return "";
+}
+
+function extractLiveQuestionMeta(content) {
+  const imageUrl = normalizeImageUrl(
+    content?.image ||
+      content?.imageUrl ||
+      content?.resources ||
+      content?.cover ||
+      content?.media?.url ||
+      content?.video?.fullImage ||
+      "",
+  );
+
+  const question = stripHtml(
+    content?.question || content?.title || content?.text || content?.description || "",
+  );
+
+  const rawChoices =
+    content?.choices ||
+    content?.answers ||
+    (content?.answerMap ? Object.values(content.answerMap) : null) ||
+    [];
+
+  const choiceLabels = [];
+  const choiceImages = [];
+
+  if (Array.isArray(rawChoices)) {
+    for (let index = 0; index < rawChoices.length; index += 1) {
+      const choice = rawChoices[index];
+      const text = stripHtml(choice?.answer || choice?.text || choice?.label || choice?.name || "");
+      const choiceImage = normalizeImageUrl(choice?.image || choice?.media?.url || "");
+      choiceImages.push(choiceImage);
+      if (text) {
+        choiceLabels.push(text);
+      } else if (choiceImage) {
+        choiceLabels.push(`image choice ${index + 1}`);
+      } else {
+        choiceLabels.push("");
+      }
+    }
+  }
+
+  return {
+    imageUrl,
+    question,
+    choiceLabels,
+    choiceImages,
+  };
+}
+
 const SERVICE_CHANNELS = ["/service/controller", "/service/player", "/service/status"];
 
 const CHALLENGE_RE =
@@ -230,6 +299,7 @@ export class KahootJoiner {
     this.onJoined = () => {};
     this.onError = () => {};
     this.onStatus = () => {};
+    this.onActivity = () => {};
     this.onGameEnd = () => {};
     this.onQuizStart = () => {};
     this.onLearnedAnswer = () => {};
@@ -273,6 +343,7 @@ export class KahootJoiner {
     this.answerWatchdog = null;
     this.sessionJoined = false;
     this.answeringBlockIndex = -1;
+    this.liveQuestionMeta = new Map();
   }
 
   applyQuizAnswers(quizAnswers) {
@@ -295,6 +366,7 @@ export class KahootJoiner {
     onJoined,
     onError,
     onStatus,
+    onActivity,
     onGameEnd,
     onQuizStart,
     onLearnedAnswer,
@@ -312,6 +384,7 @@ export class KahootJoiner {
     this.onJoined = onJoined || (() => {});
     this.onError = onError || (() => {});
     this.onStatus = onStatus || (() => {});
+    this.onActivity = onActivity || (() => {});
     this.onGameEnd = onGameEnd || (() => {});
     this.onQuizStart = onQuizStart || (() => {});
     this.onLearnedAnswer = onLearnedAnswer || (() => {});
@@ -544,11 +617,33 @@ export class KahootJoiner {
         ? this.activeQuizQuestionIndex
         : this.currentQuestionIndex;
 
-    return (
+    const cached =
       this.quizAnswers?.answersByBlockIndex?.[blockIndex] ||
       this.quizAnswers?.answers?.[quizIndex] ||
-      null
-    );
+      null;
+    const live = this.liveQuestionMeta.get(blockIndex);
+
+    if (!cached && !live) {
+      return null;
+    }
+    if (!cached) {
+      return live;
+    }
+    if (!live) {
+      return cached;
+    }
+
+    return {
+      ...cached,
+      question: cached.question || live.question || "",
+      imageUrl: cached.imageUrl || live.imageUrl || "",
+      choiceLabels:
+        cached.choiceLabels?.some((label) => String(label || "").trim()) ?
+          cached.choiceLabels
+        : live.choiceLabels || [],
+      choiceImages:
+        cached.choiceImages?.some(Boolean) ? cached.choiceImages : live.choiceImages || [],
+    };
   }
 
   hasTrustedPrefetchAnswer() {
@@ -563,15 +658,24 @@ export class KahootJoiner {
 
   canUseWebSearch() {
     const entry = this.getQuestionEntry();
-    return Boolean(entry?.question && entry?.choiceLabels?.length >= 2);
+    const labels = (entry?.choiceLabels || []).filter((label) => String(label || "").trim());
+    return Boolean(entry?.question && labels.length >= 2);
   }
 
   getSearchOptions() {
     const entry = this.getQuestionEntry();
     const imageUrl = entry?.imageUrl || entry?.choiceImages?.[0] || "";
+    const choiceImages = Array.isArray(entry?.choiceImages) ? entry.choiceImages : [];
+    const hasImages = Boolean(imageUrl || choiceImages.length);
     return {
       imageUrl,
-      timeoutMs: imageUrl ? 14000 : 10000,
+      choiceImages,
+      timeoutMs: hasImages ? 18000 : 10000,
+      onSteps: (steps) => {
+        if (steps?.length) {
+          this.onActivity({ steps });
+        }
+      },
     };
   }
 
@@ -599,14 +703,18 @@ export class KahootJoiner {
   }
 
   formatSearchDetail(searchResult) {
+    const source = searchResult?.source || "google";
     const query = searchResult?.queries?.[0];
     const snippets = searchResult?.snippetCount || 0;
+    const visionNote = searchResult?.imageDescription
+      ? ` saw "${searchResult.imageDescription}"`
+      : "";
     const imageNote = searchResult?.usedImage ? " + image" : "";
     if (!query) {
-      return imageNote ? `Googled image (${snippets} snippets)` : "";
+      return `${source}${visionNote}${imageNote ? ` (${snippets} snippets)` : ""}`;
     }
     const shortQuery = query.length > 72 ? `${query.slice(0, 69)}...` : query;
-    return `Googled "${shortQuery}"${imageNote} (${snippets} snippets)`;
+    return `${source}: "${shortQuery}"${visionNote}${imageNote} (${snippets} snippets)`;
   }
 
   async buildAndSendAnswer(runId, questionIndex, questionType, numChoices) {
@@ -620,7 +728,14 @@ export class KahootJoiner {
       const preview =
         entry.question.length > 72 ? `${entry.question.slice(0, 69)}...` : entry.question;
       const imageUrl = entry.imageUrl || entry.choiceImages?.[0];
-      this.status(imageUrl ? `Googling image + text: "${preview}"` : `Googling: "${preview}"`);
+      const choiceImageCount = entry.choiceImages?.length || 0;
+      if (imageUrl || choiceImageCount) {
+        this.status(
+          `Looking up image Q${this.currentQuestionIndex + 1}: "${preview}" (${choiceImageCount || 1} image${choiceImageCount === 1 ? "" : "s"})`,
+        );
+      } else {
+        this.status(`Googling Q${this.currentQuestionIndex + 1}: "${preview}"`);
+      }
     }
 
     const { choice, mode, detail } = await this.buildSmartChoice(questionType, numChoices);
@@ -948,6 +1063,20 @@ export class KahootJoiner {
       this.currentNumChoices = choiceCount;
     }
 
+    if (messageId === 1 || messageId === 2 || messageId === 43) {
+      const meta = extractLiveQuestionMeta(content);
+      if (meta.imageUrl || meta.question || meta.choiceLabels?.length) {
+        const existing = this.liveQuestionMeta.get(this.currentQuestionIndex) || {};
+        this.liveQuestionMeta.set(this.currentQuestionIndex, {
+          ...existing,
+          question: meta.question || existing.question || "",
+          imageUrl: meta.imageUrl || existing.imageUrl || "",
+          choiceLabels: meta.choiceLabels?.length ? meta.choiceLabels : existing.choiceLabels || [],
+          choiceImages: meta.choiceImages?.length ? meta.choiceImages : existing.choiceImages || [],
+        });
+      }
+    }
+
     if (messageId === 1) {
       // GET_READY can arrive after QUESTION_START and used to clear questionActive too early.
       // Reveal (id 8) is the only signal that answering for this block is finished.
@@ -1003,11 +1132,12 @@ export class KahootJoiner {
     const questionType = this.currentQuestionType;
     const numChoices = Math.max(this.currentNumChoices || 4, 1);
     const searchOptions = this.getSearchOptions();
+    const hasImages = Boolean(searchOptions.imageUrl || searchOptions.choiceImages?.length);
     const answerDelay = this.hasLearnedAnswer() || this.hasTrustedPrefetchAnswer()
       ? 30 + Math.floor(Math.random() * 90)
       : this.canUseWebSearch()
-        ? searchOptions.imageUrl
-          ? 5200 + Math.floor(Math.random() * 1800)
+        ? hasImages
+          ? 6200 + Math.floor(Math.random() * 2200)
           : 3600 + Math.floor(Math.random() * 1400)
         : 30 + Math.floor(Math.random() * 90);
 

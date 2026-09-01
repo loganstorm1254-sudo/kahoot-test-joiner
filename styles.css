@@ -433,7 +433,7 @@ button {
 }
 
 .joiner-card {
-  width: min(100%, 520px);
+  width: min(100%, 720px);
   padding: 28px 24px 22px;
   border-radius: 12px;
   background: #ffffff;
@@ -619,6 +619,69 @@ input[type="text"]:focus {
   font-size: 14px;
   color: var(--text-muted);
   min-height: 1.25rem;
+}
+
+.activity-log-panel {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0f1117;
+}
+
+.activity-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #171a22;
+  border-bottom: 1px solid #2a2f3a;
+}
+
+.activity-log-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9aa3b2;
+}
+
+.button-small {
+  padding: 4px 10px;
+  font-size: 12px;
+  min-height: 0;
+}
+
+.activity-log {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #d7dce5;
+}
+
+.log-line {
+  margin: 0 0 4px;
+  word-break: break-word;
+}
+
+.log-line-info {
+  color: #d7dce5;
+}
+
+.log-line-success {
+  color: #86efac;
+}
+
+.log-line-warn {
+  color: #fcd34d;
+}
+
+.log-line-error {
+  color: #fca5a5;
 }
 
 .quiz-result {

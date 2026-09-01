@@ -119,9 +119,7 @@ function extractAnswers(questions) {
       })
       .filter(Boolean);
 
-    const choiceImages = choices
-      .map((choice) => normalizeImageUrl(choice.image))
-      .filter(Boolean);
+    const choiceImages = choices.map((choice) => normalizeImageUrl(choice.image));
 
     const entry = {
       type,

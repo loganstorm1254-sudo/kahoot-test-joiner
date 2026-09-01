@@ -181,22 +181,31 @@ export function prefetchQuizAnswers(pin, { force = false } = {}) {
   return promise;
 }
 
-function searchCacheKey(question, choices, imageUrl = "") {
-  return `${normalizeTitle(question)}::${choices.map((choice) => normalizeTitle(choice)).join("|")}::${normalizeTitle(imageUrl)}`;
+function searchCacheKey(question, choices, imageUrl = "", choiceImages = []) {
+  const imageKey = [imageUrl, ...(choiceImages || [])].map((value) => normalizeTitle(value)).join("|");
+  return `${normalizeTitle(question)}::${choices.map((choice) => normalizeTitle(choice)).join("|")}::${imageKey}`;
 }
 
 export function prefetchSearchAnswer(question, choices, options = {}) {
   return lookupSearchAnswer(question, choices, { timeoutMs: 10000, ...options });
 }
 
-export function lookupSearchAnswer(question, choices, { timeoutMs = 8000, imageUrl = "" } = {}) {
-  const labels = (choices || []).map((choice) => String(choice || "").trim()).filter(Boolean);
-  if (!String(question || "").trim() || labels.length < 2) {
+export function lookupSearchAnswer(
+  question,
+  choices,
+  { timeoutMs = 8000, imageUrl = "", choiceImages = [], onSteps } = {},
+) {
+  const labels = (choices || []).map((choice) => String(choice || "").trim());
+  const validLabels = labels.filter(Boolean);
+  if (!String(question || "").trim() || validLabels.length < 2) {
     return Promise.resolve(null);
   }
 
   const normalizedImageUrl = String(imageUrl || "").trim();
-  const cacheKey = searchCacheKey(question, labels, normalizedImageUrl);
+  const normalizedChoiceImages = (choiceImages || [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const cacheKey = searchCacheKey(question, labels, normalizedImageUrl, normalizedChoiceImages);
   if (searchCache.has(cacheKey)) {
     return searchCache.get(cacheKey);
   }
@@ -211,15 +220,26 @@ export function lookupSearchAnswer(question, choices, { timeoutMs = 8000, imageU
   if (normalizedImageUrl) {
     params.set("imageUrl", normalizedImageUrl);
   }
+  if (normalizedChoiceImages.length) {
+    params.set("choiceImages", JSON.stringify(normalizedChoiceImages));
+  }
 
-  const minMargin = normalizedImageUrl ? 5 : 6;
+  const hasImages = Boolean(normalizedImageUrl || normalizedChoiceImages.length);
 
   const promise = Promise.race([
     fetch(`/api/search?${params.toString()}`)
       .then((response) => response.json().catch(() => ({})))
       .then((data) => {
+        if (onSteps && Array.isArray(data?.steps)) {
+          onSteps(data.steps);
+        }
+
         const choiceIndex = Number(data?.choiceIndex);
         const margin = Number(data?.margin) || 0;
+        const source = data?.source || "google";
+        const minMargin =
+          source === "vision" ? 12 : hasImages ? 4 : 6;
+
         if (
           !Number.isFinite(choiceIndex) ||
           choiceIndex < 0 ||
@@ -231,10 +251,12 @@ export function lookupSearchAnswer(question, choices, { timeoutMs = 8000, imageU
             textAnswer: null,
             confidence: Number(data?.confidence) || 0,
             margin,
-            source: data?.source || "google",
+            source,
             queries: Array.isArray(data?.queries) ? data.queries : [],
             snippetCount: Number(data?.snippetCount) || 0,
             usedImage: Boolean(data?.usedImage),
+            steps: Array.isArray(data?.steps) ? data.steps : [],
+            imageDescription: data?.imageDescription || "",
           };
         }
         return {
@@ -242,10 +264,12 @@ export function lookupSearchAnswer(question, choices, { timeoutMs = 8000, imageU
           textAnswer: data?.textAnswer || labels[choiceIndex],
           confidence: Number(data?.confidence) || 0,
           margin,
-          source: data?.source || "google",
+          source,
           queries: Array.isArray(data?.queries) ? data.queries : [],
           snippetCount: Number(data?.snippetCount) || 0,
           usedImage: Boolean(data?.usedImage),
+          steps: Array.isArray(data?.steps) ? data.steps : [],
+          imageDescription: data?.imageDescription || "",
         };
       })
       .catch(() => null),

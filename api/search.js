@@ -86,10 +86,19 @@ function scoreChoice(choice, corpus, titles) {
     score += 28;
   }
 
+  const escapedChoice = normalizedChoice.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const boundary = new RegExp(`\\b${escapedChoice}\\b`, "i");
+  if (boundary.test(corpus)) {
+    score += 42;
+  }
+
   const words = normalizedChoice.split(/\s+/).filter((word) => word.length > 2);
   for (const word of words) {
     if (corpus.includes(word)) {
       score += 5;
+    }
+    if (new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(corpus)) {
+      score += 4;
     }
   }
 
@@ -308,6 +317,290 @@ function normalizeImageUrl(raw) {
     return value;
   }
   return "";
+}
+
+function parseChoiceImages(raw) {
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.map((value) => normalizeImageUrl(value)).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function areGenericImageLabels(choices) {
+  if (!choices?.length) {
+    return false;
+  }
+  return choices.every((choice) => /^image choice \d+$/i.test(String(choice).trim()));
+}
+
+function fuzzMatch(left, right) {
+  const normalizedLeft = normalizeText(left);
+  const normalizedRight = normalizeText(right);
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+  if (
+    normalizedLeft.length >= 3 &&
+    normalizedRight.length >= 3 &&
+    (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft))
+  ) {
+    return true;
+  }
+
+  const leftTokens = normalizedLeft.split(/\s+/).filter((token) => token.length > 2);
+  const rightTokens = new Set(normalizedRight.split(/\s+/).filter((token) => token.length > 2));
+  let overlap = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) {
+      overlap += 1;
+    }
+  }
+  return overlap >= 1;
+}
+
+async function fetchImageBytes(imageUrl) {
+  try {
+    const response = await fetch(imageUrl, {
+      headers: {
+        Accept: "image/*,*/*",
+        "User-Agent": USER_AGENT,
+      },
+      redirect: "follow",
+    });
+    if (!response.ok) {
+      return null;
+    }
+
+    const mime = (response.headers.get("content-type") || "image/jpeg").split(";")[0].trim();
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length < 100 || buffer.length > 8_000_000) {
+      return null;
+    }
+
+    return {
+      base64: buffer.toString("base64"),
+      mime,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function describeImageWithGemini(imageUrl, prompt) {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  const imageData = await fetchImageBytes(imageUrl);
+  if (!imageData) {
+    return null;
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": USER_AGENT,
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inline_data: {
+                mime_type: imageData.mime,
+                data: imageData.base64,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 80,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json().catch(() => null);
+  const text = data?.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text || "")
+    .join(" ")
+    .trim();
+  return text || null;
+}
+
+async function describeImageWithOpenAI(imageUrl, prompt) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "User-Agent": USER_AGENT,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0.1,
+      max_tokens: 80,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: imageUrl } },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json().catch(() => null);
+  return data?.choices?.[0]?.message?.content?.trim() || null;
+}
+
+async function describeImage(imageUrl, prompt) {
+  const gemini = await describeImageWithGemini(imageUrl, prompt);
+  if (gemini) {
+    return { text: gemini, source: "gemini-vision" };
+  }
+
+  const openai = await describeImageWithOpenAI(imageUrl, prompt);
+  if (openai) {
+    return { text: openai, source: "openai-vision" };
+  }
+
+  return null;
+}
+
+async function runVisionAnalysis(question, choices, imageUrl, choiceImages, steps) {
+  const normalizedQuestionImage = normalizeImageUrl(imageUrl);
+  const normalizedChoiceImages = (choiceImages || [])
+    .map((url) => normalizeImageUrl(url))
+    .filter(Boolean);
+  const hasQuestionImage = Boolean(normalizedQuestionImage);
+  const hasChoiceImages = normalizedChoiceImages.some(Boolean);
+
+  if (!hasQuestionImage && !hasChoiceImages) {
+    return {
+      visionScores: null,
+      imageDescription: "",
+      visionCorpus: "",
+      usedVision: false,
+    };
+  }
+
+  steps.push({ message: "Running vision on question/choice images…", level: "info" });
+
+  const questionPrompt = `Identify the character, person, animal, or main subject. Reply with ONLY the name (1-5 words). Context: ${question}`;
+  const choicePrompt = "Name this character or person. Reply with ONLY the name (1-5 words).";
+
+  let questionVision = null;
+  if (hasQuestionImage) {
+    questionVision = await describeImage(normalizedQuestionImage, questionPrompt);
+    if (questionVision?.text) {
+      steps.push({
+        message: `Vision (question image): ${questionVision.text}`,
+        level: "info",
+      });
+    } else {
+      steps.push({
+        message: "Vision could not read question image (set GEMINI_API_KEY or OPENAI_API_KEY on Vercel)",
+        level: "warn",
+      });
+    }
+  }
+
+  const visionScores = choices.map(() => 0);
+  const choiceDescriptions = [];
+
+  if (hasChoiceImages) {
+    const paddedImages = choices.map((_, index) => normalizedChoiceImages[index] || "");
+    const results = await Promise.all(
+      paddedImages.map((url) => (url ? describeImage(url, choicePrompt) : Promise.resolve(null))),
+    );
+
+    for (let index = 0; index < results.length; index += 1) {
+      const result = results[index];
+      const label = choices[index] || `choice ${index + 1}`;
+      if (result?.text) {
+        choiceDescriptions.push(result.text);
+        steps.push({
+          message: `Vision (${label}): ${result.text}`,
+          level: "info",
+        });
+      }
+    }
+
+    const questionDesc = questionVision?.text || "";
+    const questionNorm = normalizeText(question);
+
+    for (let index = 0; index < choices.length; index += 1) {
+      const desc = results[index]?.text || "";
+      if (!desc) {
+        continue;
+      }
+
+      if (questionDesc && fuzzMatch(questionDesc, desc)) {
+        visionScores[index] += 55;
+      }
+
+      if (fuzzMatch(desc, choices[index])) {
+        visionScores[index] += 40;
+      }
+
+      for (const word of normalizeText(desc).split(/\s+/).filter((token) => token.length > 2)) {
+        if (questionNorm.includes(word)) {
+          visionScores[index] += 12;
+        }
+      }
+    }
+
+    if (areGenericImageLabels(choices) && questionDesc) {
+      for (let index = 0; index < choices.length; index += 1) {
+        const desc = results[index]?.text || "";
+        if (desc && fuzzMatch(questionDesc, desc)) {
+          visionScores[index] += 25;
+        }
+      }
+    }
+  }
+
+  const imageDescription = questionVision?.text || choiceDescriptions[0] || "";
+  const visionCorpus = [questionVision?.text, ...choiceDescriptions].filter(Boolean).join("\n");
+
+  return {
+    visionScores,
+    imageDescription,
+    visionCorpus,
+    usedVision: Boolean(imageDescription || choiceDescriptions.length),
+    visionSource: questionVision?.source || "vision",
+  };
 }
 
 async function serperLensSearch(imageUrl) {
@@ -663,9 +956,12 @@ async function runGoogleQuery(query) {
   return wikipediaSearch(query);
 }
 
-async function resolveFromGoogle(question, choices, imageUrl = "") {
+async function resolveFromGoogle(question, choices, imageUrl = "", choiceImages = []) {
   const normalizedQuestion = String(question || "").trim();
   const normalizedImageUrl = normalizeImageUrl(imageUrl);
+  const normalizedChoiceImages = (choiceImages || []).map((url) => normalizeImageUrl(url));
+  const steps = [];
+
   if (!normalizedQuestion || choices.length < 2) {
     return {
       choiceIndex: null,
@@ -675,6 +971,8 @@ async function resolveFromGoogle(question, choices, imageUrl = "") {
       queries: [],
       snippetCount: 0,
       usedImage: false,
+      steps,
+      imageDescription: "",
     };
   }
 
@@ -682,18 +980,90 @@ async function resolveFromGoogle(question, choices, imageUrl = "") {
   const scores = choices.map(() => 0);
   const usedSources = new Set();
   let snippetCount = 0;
-  let usedImage = false;
+  let usedImage = Boolean(normalizedImageUrl || normalizedChoiceImages.some(Boolean));
+  let imageDescription = "";
+
+  const vision = await runVisionAnalysis(
+    normalizedQuestion,
+    choices,
+    normalizedImageUrl,
+    normalizedChoiceImages,
+    steps,
+  );
+  imageDescription = vision.imageDescription || "";
+
+  if (vision.visionCorpus) {
+    accumulateChoiceScores(
+      choices,
+      {
+        snippets: [vision.visionCorpus],
+        titles: imageDescription ? [imageDescription] : [],
+      },
+      scores,
+      3.5,
+    );
+    usedSources.add(vision.visionSource || "vision");
+    snippetCount += 1;
+  }
+
+  if (vision.visionScores) {
+    for (let index = 0; index < vision.visionScores.length; index += 1) {
+      scores[index] += vision.visionScores[index];
+    }
+
+    if (areGenericImageLabels(choices)) {
+      let bestIndex = -1;
+      let bestScore = 0;
+      let secondScore = 0;
+      for (let index = 0; index < vision.visionScores.length; index += 1) {
+        if (vision.visionScores[index] > bestScore) {
+          secondScore = bestScore;
+          bestScore = vision.visionScores[index];
+          bestIndex = index;
+        } else if (vision.visionScores[index] > secondScore) {
+          secondScore = vision.visionScores[index];
+        }
+      }
+
+      const margin = bestScore - secondScore;
+      if (bestIndex >= 0 && bestScore >= 40 && margin >= 15) {
+        steps.push({
+          message: `Vision picked "${choices[bestIndex]}" (score ${Math.round(bestScore)}, margin ${Math.round(margin)})`,
+          level: "success",
+        });
+        return {
+          choiceIndex: bestIndex,
+          textAnswer: choices[bestIndex],
+          confidence: bestScore,
+          margin,
+          source: "vision",
+          queries,
+          snippetCount,
+          usedImage: true,
+          steps,
+          imageDescription,
+        };
+      }
+    }
+  }
 
   if (normalizedImageUrl) {
-    usedImage = true;
     queries.push(`[image] ${normalizedImageUrl}`);
     const imageResult = await runImageSearch(normalizedImageUrl, normalizedQuestion);
     if (imageResult) {
       usedSources.add(imageResult.source);
       snippetCount += imageResult.snippets.length;
       accumulateChoiceScores(choices, imageResult, scores, 4);
+      steps.push({
+        message: `Reverse image search (${imageResult.source}): ${imageResult.titles.slice(0, 2).join(" · ") || imageResult.snippets[0] || "matches found"}`,
+        level: "info",
+      });
+    } else {
+      steps.push({ message: "Reverse image search found nothing", level: "warn" });
     }
   }
+
+  steps.push({ message: `Text search: "${normalizedQuestion.slice(0, 80)}${normalizedQuestion.length > 80 ? "…" : ""}"`, level: "info" });
 
   const [main, ...choiceResults] = await Promise.all([
     runGoogleQuery(normalizedQuestion),
@@ -708,6 +1078,10 @@ async function resolveFromGoogle(question, choices, imageUrl = "") {
     usedSources.add(main.source);
     snippetCount += main.snippets.length;
     accumulateChoiceScores(choices, main, scores, 2.5);
+    steps.push({
+      message: `Main search (${main.source}): ${main.titles[0] || main.snippets[0] || "results"}`,
+      level: "info",
+    });
   }
 
   for (const { index, query, result } of choiceResults) {
@@ -721,13 +1095,19 @@ async function resolveFromGoogle(question, choices, imageUrl = "") {
   }
 
   if (usedImage) {
-    const imageQuery = `${normalizedQuestion} identify picture`;
+    const imageQuery = imageDescription
+      ? `${imageDescription} ${normalizedQuestion}`
+      : `${normalizedQuestion} identify picture`;
     queries.push(imageQuery);
     const imageText = await serperImageSearch(imageQuery);
     if (imageText) {
       usedSources.add(imageText.source);
       snippetCount += imageText.snippets.length;
       accumulateChoiceScores(choices, imageText, scores, 2);
+      steps.push({
+        message: `Image text search: ${imageText.titles[0] || imageText.snippets[0] || "results"}`,
+        level: "info",
+      });
     }
   }
 
@@ -742,10 +1122,19 @@ async function resolveFromGoogle(question, choices, imageUrl = "") {
 
   const sortedScores = [...scores].sort((left, right) => right - left);
   const margin = sortedScores[0] - (sortedScores[1] || 0);
-  const minScore = usedImage ? 6 : 8;
-  const minMargin = usedImage ? 5 : 6;
+  const scoreSummary = choices
+    .map((choice, index) => `${choice}=${Math.round(scores[index])}`)
+    .join(", ");
+  steps.push({ message: `Scores: ${scoreSummary}`, level: "info" });
+
+  const minScore = usedImage || vision.usedVision ? 5 : 8;
+  const minMargin = usedImage || vision.usedVision ? 4 : 6;
 
   if (bestIndex < 0 || bestScore < minScore || margin < minMargin) {
+    steps.push({
+      message: `Low confidence (best=${Math.round(bestScore)}, margin=${Math.round(margin)}) — guessing`,
+      level: "warn",
+    });
     return {
       choiceIndex: null,
       textAnswer: null,
@@ -755,18 +1144,27 @@ async function resolveFromGoogle(question, choices, imageUrl = "") {
       queries,
       snippetCount,
       usedImage,
+      steps,
+      imageDescription,
     };
   }
 
-  const source = usedSources.has("google-lens")
-    ? "google-lens"
-    : usedSources.has("google-api")
-      ? "google-api"
-      : usedSources.has("google-serper")
-        ? "google-serper"
-        : usedSources.has("google-image-scrape")
-          ? "google-image-scrape"
-          : "google";
+  const source = usedSources.has("vision") || usedSources.has("gemini-vision") || usedSources.has("openai-vision")
+    ? "vision"
+    : usedSources.has("google-lens")
+      ? "google-lens"
+      : usedSources.has("google-api")
+        ? "google-api"
+        : usedSources.has("google-serper")
+          ? "google-serper"
+          : usedSources.has("google-image-scrape")
+            ? "google-image-scrape"
+            : "google";
+
+  steps.push({
+    message: `Picked "${choices[bestIndex]}" via ${source} (margin ${Math.round(margin)})`,
+    level: "success",
+  });
 
   return {
     choiceIndex: bestIndex,
@@ -777,6 +1175,8 @@ async function resolveFromGoogle(question, choices, imageUrl = "") {
     queries,
     snippetCount,
     usedImage,
+    steps,
+    imageDescription,
   };
 }
 
@@ -789,9 +1189,10 @@ export async function GET(request) {
   const question = url.searchParams.get("question") || "";
   const choices = parseChoices(url.searchParams.get("choices"));
   const imageUrl = url.searchParams.get("imageUrl") || "";
+  const choiceImages = parseChoiceImages(url.searchParams.get("choiceImages"));
 
   try {
-    const result = await resolveFromGoogle(question, choices, imageUrl);
+    const result = await resolveFromGoogle(question, choices, imageUrl, choiceImages);
     return Response.json(result, { headers: corsHeaders() });
   } catch {
     return Response.json(
@@ -802,7 +1203,9 @@ export async function GET(request) {
         source: "error",
         queries: [],
         snippetCount: 0,
-        usedImage: Boolean(normalizeImageUrl(imageUrl)),
+        usedImage: Boolean(normalizeImageUrl(imageUrl) || choiceImages.length),
+        steps: [{ message: "Search API error", level: "error" }],
+        imageDescription: "",
       },
       { status: 500, headers: corsHeaders() },
     );

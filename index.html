@@ -159,12 +159,21 @@
           </form>
 
           <p id="status" class="status">Enter a PIN to join</p>
+
+          <div class="activity-log-panel">
+            <div class="activity-log-header">
+              <span class="activity-log-title">Activity log</span>
+              <button type="button" id="clear-log" class="button button-secondary button-small">Clear</button>
+            </div>
+            <div id="activity-log" class="activity-log" aria-live="polite"></div>
+          </div>
+
           <p id="quiz-result" class="quiz-result" hidden></p>
           <p id="version-info" class="version-info">Checking version…</p>
         </div>
       </main>
     </div>
 
-    <script type="module" src="/app.js?v=kahoot-decoy-v8"></script>
+    <script type="module" src="/app.js?v=kahoot-decoy-v9"></script>
   </body>
 </html>
