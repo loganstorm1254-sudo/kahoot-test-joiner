@@ -129,6 +129,19 @@ function shuffle(array) {
   return copy;
 }
 
+function playerMessageId(data) {
+  const id = Number(data?.id);
+  return Number.isFinite(id) ? id : -1;
+}
+
+function normalizeQuestionType(type) {
+  const value = String(type || "").toLowerCase();
+  if (!value || value === "classic" || value === "true_false") {
+    return "quiz";
+  }
+  return value;
+}
+
 export class KahootJoiner {
   constructor() {
     this.reset();
@@ -140,6 +153,7 @@ export class KahootJoiner {
     this.autoAnswer = false;
     this.onJoined = () => {};
     this.onError = () => {};
+    this.onStatus = () => {};
 
     this.ws = null;
     this.clientId = null;
@@ -159,9 +173,22 @@ export class KahootJoiner {
     this.cid = null;
     this.answerTimer = null;
     this.questionStartTime = 0;
+    this.questionActive = false;
+    this.twoFactorPending = false;
+    this.ackCounter = 0;
+    this.usesGameBlocks = false;
   }
 
-  start({ pin, nickname, autoAnswer, onJoined, onError }) {
+  getGameId() {
+    const numeric = Number(this.pin);
+    return Number.isFinite(numeric) ? numeric : this.pin;
+  }
+
+  status(message) {
+    this.onStatus(message);
+  }
+
+  start({ pin, nickname, autoAnswer, onJoined, onError, onStatus }) {
     this.stop(false);
     this.reset();
 
@@ -170,6 +197,7 @@ export class KahootJoiner {
     this.autoAnswer = Boolean(autoAnswer);
     this.onJoined = onJoined || (() => {});
     this.onError = onError || (() => {});
+    this.onStatus = onStatus || (() => {});
 
     this.runId += 1;
     const runId = this.runId;
@@ -363,11 +391,14 @@ export class KahootJoiner {
       return;
     }
     const ext = message.ext || {};
+    if (ext.ack != null) {
+      this.ackCounter = Number(ext.ack) + 1;
+    }
     this.send({
       channel: "/meta/connect",
       connectionType: "websocket",
       ext: {
-        ack: ext.ack || 0,
+        ack: this.ackCounter,
         timesync: {
           l: this.timesync.l,
           o: this.timesync.o,
@@ -386,7 +417,7 @@ export class KahootJoiner {
       channel: "/service/controller",
       data: {
         type: "login",
-        gameid: this.pin,
+        gameid: this.getGameId(),
         host: "kahoot.it",
         name: this.nickname,
         content: JSON.stringify({
@@ -405,7 +436,7 @@ export class KahootJoiner {
       data: {
         id: 16,
         type: "message",
-        gameid: this.pin,
+        gameid: this.getGameId(),
         host: "kahoot.it",
         content: JSON.stringify({ usingNamerator: false }),
       },
@@ -420,7 +451,7 @@ export class KahootJoiner {
       data: {
         id: messageId,
         type: "message",
-        gameid: this.pin,
+        gameid: this.getGameId(),
         host: "kahoot.it",
         content,
       },
@@ -452,8 +483,13 @@ export class KahootJoiner {
     if (questionType === "jumble") {
       return 4;
     }
+    if (content.numberOfChoices != null) {
+      return Math.min(Math.max(content.numberOfChoices, 1), 6);
+    }
     if (content.quizQuestionAnswers && content.quizQuestionAnswers.length > 0) {
-      const arrayIndex = Math.max(0, (questionIndex || 1) - 1);
+      const arrayIndex = this.usesGameBlocks
+        ? Math.max(0, questionIndex)
+        : Math.max(0, (questionIndex || 1) - 1);
       const count =
         content.quizQuestionAnswers[arrayIndex] ?? content.quizQuestionAnswers[0];
       return Math.min(Math.max(count, 1), 6);
@@ -468,20 +504,18 @@ export class KahootJoiner {
   }
 
   updateQuestionState(content, messageId) {
-    if (content.questionIndex != null) {
+    if (content.gameBlockIndex != null) {
+      this.usesGameBlocks = true;
+      this.currentQuestionIndex = content.gameBlockIndex;
+    } else if (content.questionIndex != null) {
       this.currentQuestionIndex = content.questionIndex;
     } else if (content.questionNumber != null) {
       this.currentQuestionIndex = content.questionNumber;
-    } else if (messageId === 2) {
-      this.currentQuestionIndex = Math.max(this.currentQuestionIndex, 1);
     }
 
-    const blockType = content.gameBlockType || "";
-    const quizType = content.quizType || "";
+    const blockType = content.type || content.gameBlockType || content.quizType || "";
     if (blockType) {
-      this.currentQuestionType = blockType;
-    } else if (quizType) {
-      this.currentQuestionType = quizType;
+      this.currentQuestionType = normalizeQuestionType(blockType);
     }
 
     const choiceCount = this.parseChoiceCount(
@@ -492,20 +526,23 @@ export class KahootJoiner {
     if (choiceCount) {
       this.currentNumChoices = choiceCount;
     }
+
+    if (messageId === 1) {
+      this.questionActive = false;
+    }
   }
 
   sendAnswerModern(choice) {
-    const sync = this.timesync || { l: 30, o: 0 };
     const questionIndex = this.currentQuestionIndex;
-    const type = this.currentQuestionType || "quiz";
+    const type = normalizeQuestionType(this.currentQuestionType || "quiz");
     let inner;
 
     if (typeof choice === "string") {
-      inner = { text: choice, questionIndex, type, meta: { lag: sync.l } };
+      inner = { text: choice, questionIndex, type };
     } else if (Array.isArray(choice)) {
-      inner = { choice, questionIndex, type, meta: { lag: sync.l } };
+      inner = { choice, questionIndex, type };
     } else {
-      inner = { choice, questionIndex, type, meta: { lag: sync.l } };
+      inner = { choice, questionIndex, type };
     }
 
     this.sendControllerMessage(45, JSON.stringify(inner));
@@ -515,6 +552,7 @@ export class KahootJoiner {
     const sync = this.timesync || { l: 30, o: 0 };
     const inner = {
       choice,
+      questionIndex: this.currentQuestionIndex,
       meta: {
         lag: sync.l,
         device: {
@@ -527,14 +565,17 @@ export class KahootJoiner {
   }
 
   scheduleAutoAnswer(runId) {
-    if (!this.autoAnswer || this.closed || !this.readyToPlay) {
+    if (!this.autoAnswer || this.closed || !this.readyToPlay || this.twoFactorPending) {
+      return;
+    }
+    if (!this.questionActive) {
       return;
     }
     if (this.currentQuestionIndex === this.lastAnsweredIndex) {
       return;
     }
 
-    this.lastAnsweredIndex = this.currentQuestionIndex;
+    const questionIndex = this.currentQuestionIndex;
     const choice = this.buildRandomChoice(this.currentQuestionType, this.currentNumChoices);
     const sinceStart = Date.now() - (this.questionStartTime || 0);
     const minWait = Math.max(250 - sinceStart, 0);
@@ -545,20 +586,26 @@ export class KahootJoiner {
     }
 
     this.answerTimer = setTimeout(() => {
-      if (!this.closed && runId === this.runId) {
+      if (!this.closed && runId === this.runId && this.questionActive) {
+        if (this.lastAnsweredIndex === questionIndex) {
+          return;
+        }
+        this.lastAnsweredIndex = questionIndex;
+        this.status(`Answering block ${questionIndex} → choice ${typeof choice === "number" ? choice + 1 : choice}`);
         this.sendAnswerModern(choice);
-        // Some live games still accept the legacy answer packet.
-        setTimeout(() => {
-          if (!this.closed && runId === this.runId) {
-            this.sendAnswerLegacy(typeof choice === "number" ? choice : 0);
-          }
-        }, 80);
+        if (!this.usesGameBlocks) {
+          setTimeout(() => {
+            if (!this.closed && runId === this.runId) {
+              this.sendAnswerLegacy(typeof choice === "number" ? choice : 0);
+            }
+          }, 80);
+        }
       }
     }, answerDelay);
   }
 
   handlePlayerMessage(data, runId) {
-    const id = data.id ?? -1;
+    const id = playerMessageId(data);
     const contentStr = typeof data.content === "string" ? data.content : "";
 
     if (id === 14) {
@@ -571,11 +618,14 @@ export class KahootJoiner {
     }
 
     if (id === 52) {
+      this.twoFactorPending = false;
       this.readyToPlay = true;
       return;
     }
 
-    if (id === 53 && this.autoAnswer && this.readyToPlay) {
+    if (id === 53 && this.autoAnswer) {
+      this.twoFactorPending = true;
+      this.readyToPlay = false;
       this.sendTwoFactorAuth();
       return;
     }
@@ -589,22 +639,26 @@ export class KahootJoiner {
     }
 
     if (id === 8) {
+      this.questionActive = false;
       this.lastAnsweredIndex = -1;
+      if (this.answerTimer) {
+        clearTimeout(this.answerTimer);
+        this.answerTimer = null;
+      }
       return;
     }
 
-    // id 1 = question ready (countdown). Only answer after id 2 (question start).
+    // id 1 = prefetch (awaiting) — store block info, do not answer
     if (id === 1) {
       return;
     }
 
-    if (id === 2) {
-      this.questionStartTime = Date.now();
-      this.scheduleAutoAnswer(runId);
+    if (!this.autoAnswer || !this.readyToPlay || this.twoFactorPending) {
       return;
     }
 
-    if (id === 43) {
+    if (id === 2 || id === 43) {
+      this.questionActive = true;
       this.questionStartTime = Date.now();
       this.scheduleAutoAnswer(runId);
     }

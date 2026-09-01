@@ -112,6 +112,12 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
         failedCount += 1;
         updateBatchStatus();
       },
+      onStatus: (message) => {
+        if (activeSession !== session || targetCount !== 1) {
+          return;
+        }
+        setStatus(message);
+      },
     });
 
     joiners.push(joiner);
