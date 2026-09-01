@@ -60,6 +60,31 @@ function getChoiceCount(question) {
   return (question?.choices || []).length;
 }
 
+function normalizeImageUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) {
+    return "";
+  }
+  if (value.startsWith("//")) {
+    return `https:${value}`;
+  }
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+  return "";
+}
+
+function extractImageUrl(question) {
+  return normalizeImageUrl(
+    question?.image ||
+      question?.cover ||
+      question?.resources ||
+      question?.media?.url ||
+      question?.video?.fullImage ||
+      "",
+  );
+}
+
 function extractAnswers(questions) {
   const answers = [];
   const answersByBlockIndex = [];
@@ -82,7 +107,20 @@ function extractAnswers(questions) {
     }
 
     const choiceLabels = choices
-      .map((choice) => stripHtml(choice.answer || choice.text || choice.label || ""))
+      .map((choice, index) => {
+        const text = stripHtml(choice.answer || choice.text || choice.label || "");
+        if (text) {
+          return text;
+        }
+        if (normalizeImageUrl(choice.image)) {
+          return `image choice ${index + 1}`;
+        }
+        return "";
+      })
+      .filter(Boolean);
+
+    const choiceImages = choices
+      .map((choice) => normalizeImageUrl(choice.image))
       .filter(Boolean);
 
     const entry = {
@@ -92,6 +130,8 @@ function extractAnswers(questions) {
       correctIndices,
       question: stripHtml(question.question || question.title || question.description || ""),
       choiceLabels,
+      imageUrl: extractImageUrl(question),
+      choiceImages,
       textAnswers: choices
         .filter((choice) => choice?.correct && choice?.answer)
         .map((choice) => stripHtml(choice.answer))

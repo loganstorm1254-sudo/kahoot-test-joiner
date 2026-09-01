@@ -181,21 +181,22 @@ export function prefetchQuizAnswers(pin, { force = false } = {}) {
   return promise;
 }
 
-function searchCacheKey(question, choices) {
-  return `${normalizeTitle(question)}::${choices.map((choice) => normalizeTitle(choice)).join("|")}`;
+function searchCacheKey(question, choices, imageUrl = "") {
+  return `${normalizeTitle(question)}::${choices.map((choice) => normalizeTitle(choice)).join("|")}::${normalizeTitle(imageUrl)}`;
 }
 
-export function prefetchSearchAnswer(question, choices) {
-  return lookupSearchAnswer(question, choices, { timeoutMs: 6000 });
+export function prefetchSearchAnswer(question, choices, options = {}) {
+  return lookupSearchAnswer(question, choices, { timeoutMs: 10000, ...options });
 }
 
-export function lookupSearchAnswer(question, choices, { timeoutMs = 4000 } = {}) {
+export function lookupSearchAnswer(question, choices, { timeoutMs = 8000, imageUrl = "" } = {}) {
   const labels = (choices || []).map((choice) => String(choice || "").trim()).filter(Boolean);
   if (!String(question || "").trim() || labels.length < 2) {
     return Promise.resolve(null);
   }
 
-  const cacheKey = searchCacheKey(question, labels);
+  const normalizedImageUrl = String(imageUrl || "").trim();
+  const cacheKey = searchCacheKey(question, labels, normalizedImageUrl);
   if (searchCache.has(cacheKey)) {
     return searchCache.get(cacheKey);
   }
@@ -207,6 +208,11 @@ export function lookupSearchAnswer(question, choices, { timeoutMs = 4000 } = {})
     question: String(question).trim(),
     choices: JSON.stringify(labels),
   });
+  if (normalizedImageUrl) {
+    params.set("imageUrl", normalizedImageUrl);
+  }
+
+  const minMargin = normalizedImageUrl ? 5 : 6;
 
   const promise = Promise.race([
     fetch(`/api/search?${params.toString()}`)
@@ -218,7 +224,7 @@ export function lookupSearchAnswer(question, choices, { timeoutMs = 4000 } = {})
           !Number.isFinite(choiceIndex) ||
           choiceIndex < 0 ||
           choiceIndex >= labels.length ||
-          margin < 8
+          margin < minMargin
         ) {
           return {
             choiceIndex: null,
@@ -228,6 +234,7 @@ export function lookupSearchAnswer(question, choices, { timeoutMs = 4000 } = {})
             source: data?.source || "google",
             queries: Array.isArray(data?.queries) ? data.queries : [],
             snippetCount: Number(data?.snippetCount) || 0,
+            usedImage: Boolean(data?.usedImage),
           };
         }
         return {
@@ -238,6 +245,7 @@ export function lookupSearchAnswer(question, choices, { timeoutMs = 4000 } = {})
           source: data?.source || "google",
           queries: Array.isArray(data?.queries) ? data.queries : [],
           snippetCount: Number(data?.snippetCount) || 0,
+          usedImage: Boolean(data?.usedImage),
         };
       })
       .catch(() => null),

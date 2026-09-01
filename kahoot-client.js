@@ -566,6 +566,15 @@ export class KahootJoiner {
     return Boolean(entry?.question && entry?.choiceLabels?.length >= 2);
   }
 
+  getSearchOptions() {
+    const entry = this.getQuestionEntry();
+    const imageUrl = entry?.imageUrl || entry?.choiceImages?.[0] || "";
+    return {
+      imageUrl,
+      timeoutMs: imageUrl ? 14000 : 10000,
+    };
+  }
+
   hasLearnedAnswer() {
     const blockIndex = this.currentQuestionIndex;
     const quizIndex =
@@ -586,17 +595,18 @@ export class KahootJoiner {
     if (this.hasTrustedPrefetchAnswer()) {
       return;
     }
-    prefetchSearchAnswer(entry.question, entry.choiceLabels);
+    prefetchSearchAnswer(entry.question, entry.choiceLabels, this.getSearchOptions());
   }
 
   formatSearchDetail(searchResult) {
     const query = searchResult?.queries?.[0];
     const snippets = searchResult?.snippetCount || 0;
+    const imageNote = searchResult?.usedImage ? " + image" : "";
     if (!query) {
-      return "";
+      return imageNote ? `Googled image (${snippets} snippets)` : "";
     }
     const shortQuery = query.length > 72 ? `${query.slice(0, 69)}...` : query;
-    return `Googled "${shortQuery}" (${snippets} snippets)`;
+    return `Googled "${shortQuery}"${imageNote} (${snippets} snippets)`;
   }
 
   async buildAndSendAnswer(runId, questionIndex, questionType, numChoices) {
@@ -609,7 +619,8 @@ export class KahootJoiner {
     if (entry?.question && !this.hasLearnedAnswer() && this.canUseWebSearch()) {
       const preview =
         entry.question.length > 72 ? `${entry.question.slice(0, 69)}...` : entry.question;
-      this.status(`Googling: "${preview}"`);
+      const imageUrl = entry.imageUrl || entry.choiceImages?.[0];
+      this.status(imageUrl ? `Googling image + text: "${preview}"` : `Googling: "${preview}"`);
     }
 
     const { choice, mode, detail } = await this.buildSmartChoice(questionType, numChoices);
@@ -679,7 +690,11 @@ export class KahootJoiner {
 
     if (type === "open_ended" || type === "word_cloud") {
       if (entry?.question) {
-        const search = await lookupSearchAnswer(entry.question, entry.choiceLabels || []);
+        const search = await lookupSearchAnswer(
+          entry.question,
+          entry.choiceLabels || [],
+          this.getSearchOptions(),
+        );
         if (search?.textAnswer) {
           return {
             choice: search.textAnswer,
@@ -703,7 +718,11 @@ export class KahootJoiner {
     }
 
     if (entry?.question && entry?.choiceLabels?.length >= 2) {
-      const search = await lookupSearchAnswer(entry.question, entry.choiceLabels);
+      const search = await lookupSearchAnswer(
+        entry.question,
+        entry.choiceLabels,
+        this.getSearchOptions(),
+      );
       if (search?.choiceIndex != null && search.choiceIndex >= 0 && search.choiceIndex < numChoices) {
         return {
           choice: search.choiceIndex,
@@ -711,20 +730,6 @@ export class KahootJoiner {
           detail: this.formatSearchDetail(search),
         };
       }
-    }
-
-    if (this.hasKnownAnswer()) {
-      return {
-        choice: resolveChoice(
-          type,
-          numChoices,
-          quizIndex,
-          this.quizAnswers,
-          this.pin,
-          blockIndex,
-        ),
-        mode: "known answer",
-      };
     }
 
     return {
@@ -997,10 +1002,13 @@ export class KahootJoiner {
     const questionIndex = this.currentQuestionIndex;
     const questionType = this.currentQuestionType;
     const numChoices = Math.max(this.currentNumChoices || 4, 1);
+    const searchOptions = this.getSearchOptions();
     const answerDelay = this.hasLearnedAnswer() || this.hasTrustedPrefetchAnswer()
       ? 30 + Math.floor(Math.random() * 90)
       : this.canUseWebSearch()
-        ? 1400 + Math.floor(Math.random() * 900)
+        ? searchOptions.imageUrl
+          ? 5200 + Math.floor(Math.random() * 1800)
+          : 3600 + Math.floor(Math.random() * 1400)
         : 30 + Math.floor(Math.random() * 90);
 
     this.clearAnswerTimers();
@@ -1025,7 +1033,7 @@ export class KahootJoiner {
         return;
       }
       this.submitAutoAnswer(runId, questionIndex, questionType, numChoices);
-    }, 3200);
+    }, searchOptions.imageUrl ? 15000 : 12000);
   }
 
   reportGameEnd(content) {

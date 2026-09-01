@@ -296,6 +296,196 @@ async function serperSearch(query) {
   };
 }
 
+function normalizeImageUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) {
+    return "";
+  }
+  if (value.startsWith("//")) {
+    return `https:${value}`;
+  }
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+  return "";
+}
+
+async function serperLensSearch(imageUrl) {
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  const response = await fetch("https://google.serper.dev/lens", {
+    method: "POST",
+    headers: {
+      "X-API-KEY": apiKey,
+      "Content-Type": "application/json",
+      "User-Agent": USER_AGENT,
+    },
+    body: JSON.stringify({
+      url: imageUrl,
+      hl: "en",
+      gl: "us",
+    }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json().catch(() => null);
+  const snippets = [];
+  const titles = [];
+
+  if (data?.knowledgeGraph?.title) {
+    titles.push(String(data.knowledgeGraph.title));
+  }
+  if (data?.knowledgeGraph?.subtitle) {
+    snippets.push(String(data.knowledgeGraph.subtitle));
+  }
+  if (data?.knowledgeGraph?.description) {
+    snippets.push(String(data.knowledgeGraph.description));
+  }
+
+  for (const match of data?.visualMatches || []) {
+    if (match?.title) {
+      titles.push(String(match.title));
+    }
+    if (match?.source) {
+      snippets.push(String(match.source));
+    }
+    if (match?.link) {
+      snippets.push(String(match.link));
+    }
+  }
+
+  for (const match of data?.exactMatches || []) {
+    if (match?.title) {
+      titles.push(String(match.title));
+    }
+    if (match?.source) {
+      snippets.push(String(match.source));
+    }
+  }
+
+  if (!snippets.length && !titles.length) {
+    return null;
+  }
+
+  return {
+    source: "google-lens",
+    snippets,
+    titles,
+  };
+}
+
+async function serperImageSearch(query) {
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  const response = await fetch("https://google.serper.dev/images", {
+    method: "POST",
+    headers: {
+      "X-API-KEY": apiKey,
+      "Content-Type": "application/json",
+      "User-Agent": USER_AGENT,
+    },
+    body: JSON.stringify({
+      q: query,
+      num: 8,
+      hl: "en",
+      gl: "us",
+    }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json().catch(() => null);
+  const snippets = [];
+  const titles = [];
+
+  for (const item of data?.images || []) {
+    if (item?.title) {
+      titles.push(String(item.title));
+    }
+    if (item?.source) {
+      snippets.push(String(item.source));
+    }
+    if (item?.link) {
+      snippets.push(String(item.link));
+    }
+  }
+
+  if (!snippets.length && !titles.length) {
+    return null;
+  }
+
+  return {
+    source: "google-images",
+    snippets,
+    titles,
+  };
+}
+
+async function googleSearchByImage(imageUrl) {
+  const url = new URL("https://www.google.com/searchbyimage");
+  url.searchParams.set("image_url", imageUrl);
+  url.searchParams.set("hl", "en");
+  url.searchParams.set("safe", "off");
+
+  const response = await fetch(url, {
+    headers: {
+      Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": "en-US,en;q=0.9",
+      "User-Agent": USER_AGENT,
+    },
+    redirect: "follow",
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const html = await response.text();
+  if (!html || /unusual traffic|captcha|consent\.google/i.test(html)) {
+    return null;
+  }
+
+  const parsed = parseGoogleHtml(html);
+  if (!parsed.snippets.length && !parsed.titles.length) {
+    return null;
+  }
+
+  return {
+    source: "google-image-scrape",
+    snippets: parsed.snippets,
+    titles: parsed.titles,
+  };
+}
+
+async function runImageSearch(imageUrl, question) {
+  const lens = await serperLensSearch(imageUrl);
+  if (lens) {
+    return lens;
+  }
+
+  const reverse = await googleSearchByImage(imageUrl);
+  if (reverse) {
+    return reverse;
+  }
+
+  if (question) {
+    return serperImageSearch(`${question} image`);
+  }
+
+  return null;
+}
+
 function parseDuckDuckGoHtml(html) {
   const snippets = [];
   const titles = [];
@@ -473,8 +663,9 @@ async function runGoogleQuery(query) {
   return wikipediaSearch(query);
 }
 
-async function resolveFromGoogle(question, choices) {
+async function resolveFromGoogle(question, choices, imageUrl = "") {
   const normalizedQuestion = String(question || "").trim();
+  const normalizedImageUrl = normalizeImageUrl(imageUrl);
   if (!normalizedQuestion || choices.length < 2) {
     return {
       choiceIndex: null,
@@ -483,6 +674,7 @@ async function resolveFromGoogle(question, choices) {
       source: "invalid-input",
       queries: [],
       snippetCount: 0,
+      usedImage: false,
     };
   }
 
@@ -490,30 +682,52 @@ async function resolveFromGoogle(question, choices) {
   const scores = choices.map(() => 0);
   const usedSources = new Set();
   let snippetCount = 0;
+  let usedImage = false;
 
-  const main = await runGoogleQuery(normalizedQuestion);
+  if (normalizedImageUrl) {
+    usedImage = true;
+    queries.push(`[image] ${normalizedImageUrl}`);
+    const imageResult = await runImageSearch(normalizedImageUrl, normalizedQuestion);
+    if (imageResult) {
+      usedSources.add(imageResult.source);
+      snippetCount += imageResult.snippets.length;
+      accumulateChoiceScores(choices, imageResult, scores, 4);
+    }
+  }
+
+  const [main, ...choiceResults] = await Promise.all([
+    runGoogleQuery(normalizedQuestion),
+    ...choices.map(async (choice, index) => {
+      const query = `${normalizedQuestion} "${choice}"`;
+      const result = await runGoogleQuery(query);
+      return { index, query, result };
+    }),
+  ]);
+
   if (main) {
     usedSources.add(main.source);
     snippetCount += main.snippets.length;
     accumulateChoiceScores(choices, main, scores, 2.5);
   }
 
-  for (let index = 0; index < choices.length; index += 1) {
-    const query = `${normalizedQuestion} "${choices[index]}"`;
-    queries.push(query);
-    const result = await runGoogleQuery(query);
+  for (const { index, query, result } of choiceResults) {
     if (!result) {
       continue;
     }
+    queries.push(query);
     usedSources.add(result.source);
     snippetCount += result.snippets.length;
-    accumulateChoiceScores(choices, result, scores, 1.2, index);
+    accumulateChoiceScores(choices, result, scores, 1.4, index);
+  }
 
-    const best = Math.max(...scores);
-    const sorted = [...scores].sort((left, right) => right - left);
-    const second = sorted[1] || 0;
-    if (best >= 40 && best - second >= 15) {
-      break;
+  if (usedImage) {
+    const imageQuery = `${normalizedQuestion} identify picture`;
+    queries.push(imageQuery);
+    const imageText = await serperImageSearch(imageQuery);
+    if (imageText) {
+      usedSources.add(imageText.source);
+      snippetCount += imageText.snippets.length;
+      accumulateChoiceScores(choices, imageText, scores, 2);
     }
   }
 
@@ -528,8 +742,10 @@ async function resolveFromGoogle(question, choices) {
 
   const sortedScores = [...scores].sort((left, right) => right - left);
   const margin = sortedScores[0] - (sortedScores[1] || 0);
+  const minScore = usedImage ? 6 : 8;
+  const minMargin = usedImage ? 5 : 6;
 
-  if (bestIndex < 0 || bestScore < 8 || margin < 8) {
+  if (bestIndex < 0 || bestScore < minScore || margin < minMargin) {
     return {
       choiceIndex: null,
       textAnswer: null,
@@ -538,14 +754,19 @@ async function resolveFromGoogle(question, choices) {
       source: snippetCount > 0 ? "low-confidence" : "no-results",
       queries,
       snippetCount,
+      usedImage,
     };
   }
 
-  const source = usedSources.has("google-api")
-    ? "google-api"
-    : usedSources.has("google-serper")
-      ? "google-serper"
-      : "google";
+  const source = usedSources.has("google-lens")
+    ? "google-lens"
+    : usedSources.has("google-api")
+      ? "google-api"
+      : usedSources.has("google-serper")
+        ? "google-serper"
+        : usedSources.has("google-image-scrape")
+          ? "google-image-scrape"
+          : "google";
 
   return {
     choiceIndex: bestIndex,
@@ -555,6 +776,7 @@ async function resolveFromGoogle(question, choices) {
     source,
     queries,
     snippetCount,
+    usedImage,
   };
 }
 
@@ -566,9 +788,10 @@ export async function GET(request) {
   const url = new URL(request.url);
   const question = url.searchParams.get("question") || "";
   const choices = parseChoices(url.searchParams.get("choices"));
+  const imageUrl = url.searchParams.get("imageUrl") || "";
 
   try {
-    const result = await resolveFromGoogle(question, choices);
+    const result = await resolveFromGoogle(question, choices, imageUrl);
     return Response.json(result, { headers: corsHeaders() });
   } catch {
     return Response.json(
@@ -579,6 +802,7 @@ export async function GET(request) {
         source: "error",
         queries: [],
         snippetCount: 0,
+        usedImage: Boolean(normalizeImageUrl(imageUrl)),
       },
       { status: 500, headers: corsHeaders() },
     );

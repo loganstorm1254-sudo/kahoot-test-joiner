@@ -7,7 +7,7 @@
       "maxDuration": 30
     },
     "api/search.js": {
-      "maxDuration": 20
+      "maxDuration": 30
     },
     "api/version.js": {
       "maxDuration": 10
