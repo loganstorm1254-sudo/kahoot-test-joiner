@@ -237,8 +237,8 @@ async function applyQuizAnswersToAll(joinersList, quizAnswers) {
   }
 }
 
-async function loadQuizAnswersByTitle(pin, title, choiceCounts, activeSession) {
-  if (!title || !choiceCounts?.length) {
+async function loadQuizAnswersByTitle(pin, title, choiceCounts, activeSession, quizId) {
+  if ((!title && !quizId) || !choiceCounts?.length) {
     return null;
   }
 
@@ -248,7 +248,7 @@ async function loadQuizAnswersByTitle(pin, title, choiceCounts, activeSession) {
   }
 
   if (!titleFetchPromise) {
-    titleFetchPromise = fetchQuizByTitle(title, choiceCounts, pin).finally(() => {
+    titleFetchPromise = fetchQuizByTitle(title, choiceCounts, pin, quizId).finally(() => {
       titleFetchPromise = null;
     });
   }
@@ -331,12 +331,18 @@ async function startPlayers(activeSession, pin, nicknames, autoAnswer) {
         gameEndResults.push(result);
         updateQuizEndSummary(activeSession);
       },
-      onQuizStart: async ({ title, choiceCounts, pin: quizPin }) => {
+      onQuizStart: async ({ title, quizId, choiceCounts, pin: quizPin }) => {
         if (activeSession !== session || !autoAnswer) {
           return;
         }
 
-        const fetched = await loadQuizAnswersByTitle(quizPin, title, choiceCounts, activeSession);
+        const fetched = await loadQuizAnswersByTitle(
+          quizPin,
+          title,
+          choiceCounts,
+          activeSession,
+          quizId,
+        );
         if (activeSession !== session) {
           return;
         }

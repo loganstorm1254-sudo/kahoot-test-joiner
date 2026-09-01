@@ -210,6 +210,9 @@ export class KahootJoiner {
     this.pendingGameEnd = null;
     this.gameEndTimer = null;
     this.pendingRanking = null;
+    this.liveQuizTitle = "";
+    this.liveQuizId = "";
+    this.liveChoiceCounts = [];
   }
 
   applyQuizAnswers(quizAnswers) {
@@ -543,8 +546,10 @@ export class KahootJoiner {
       const arrayIndex = this.usesGameBlocks
         ? Math.max(0, questionIndex)
         : Math.max(0, (questionIndex || 1) - 1);
-      const count =
-        content.quizQuestionAnswers[arrayIndex] ?? content.quizQuestionAnswers[0];
+      const count = content.quizQuestionAnswers[arrayIndex];
+      if (count == null || count === 0) {
+        return null;
+      }
       return Math.min(Math.max(count, 1), 6);
     }
     if (content.answerMap) {
@@ -718,14 +723,26 @@ export class KahootJoiner {
       return;
     }
 
-    const title = content.quizTitle || content.quizName || content.title || "";
+    const title =
+      content.name ||
+      content.quizTitle ||
+      content.quizName ||
+      content.title ||
+      "";
+    const quizId = content.quizId || content.quizUuid || content.uuid || "";
     const counts = Array.isArray(content.quizQuestionAnswers) ? content.quizQuestionAnswers : [];
-    if (!title || !counts.length) {
+
+    this.liveQuizTitle = title;
+    this.liveQuizId = quizId;
+    this.liveChoiceCounts = counts;
+
+    if ((!title && !quizId) || !counts.length) {
       return;
     }
 
     this.onQuizStart({
       title,
+      quizId,
       choiceCounts: counts,
       pin: this.pin,
     });

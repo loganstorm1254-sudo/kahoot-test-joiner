@@ -91,7 +91,7 @@ export async function fetchQuizAnswers(pin, { force = false } = {}) {
   return storeQuizAnswers(data, { pin: normalizedPin });
 }
 
-export async function fetchQuizByTitle(title, choiceCounts, pin) {
+export async function fetchQuizByTitle(title, choiceCounts, pin, quizId) {
   const counts = Array.isArray(choiceCounts) ? choiceCounts : [];
   const cacheKey = cacheKeyForTitle(title, counts);
   if (cacheByTitle.has(cacheKey)) {
@@ -102,16 +102,19 @@ export async function fetchQuizByTitle(title, choiceCounts, pin) {
     return cached;
   }
 
-  const inflightKey = `title:${cacheKey}`;
+  const inflightKey = quizId ? `id:${quizId}` : `title:${cacheKey}`;
   if (inflight.has(inflightKey)) {
     return inflight.get(inflightKey);
   }
 
   const promise = (async () => {
-    const params = new URLSearchParams({
-      title: String(title || ""),
-      counts: counts.join(","),
-    });
+    const params = new URLSearchParams();
+    if (quizId) {
+      params.set("quizId", String(quizId));
+    } else {
+      params.set("title", String(title || ""));
+      params.set("counts", counts.join(","));
+    }
     const data = await fetchQuizApi(params.toString());
     return storeQuizAnswers(data, { pin, title, counts });
   })().finally(() => {
