@@ -692,7 +692,6 @@ const viewDecoy = document.getElementById("view-decoy");
 const viewJoiner = document.getElementById("view-joiner");
 const decoyForm = document.getElementById("decoy-form");
 const decoyPinInput = document.getElementById("decoy-pin");
-const decoyNicknameInput = document.getElementById("decoy-nickname");
 const decoyStatusEl = document.getElementById("decoy-status");
 const decoyEnterButton = document.getElementById("decoy-enter");
 
@@ -733,7 +732,7 @@ function setView(showJoiner) {
   }
 
   document.title = showJoiner ? "Test Joiner" : "Enter Game PIN - Kahoot!";
-  document.documentElement.style.background = showJoiner ? "#1a1033" : "#46178f";
+  document.documentElement.style.background = showJoiner ? "#1a1033" : "#2f1d5c";
   resetQuickExitBuffer();
 }
 
@@ -804,18 +803,10 @@ function onDecoySubmit(event) {
   }
 
   const pin = decoyPinInput.value.replace(/\D/g, "");
-  const nickname = decoyNicknameInput?.value.trim() || "";
 
   if (pin.length < 6) {
     if (decoyStatusEl) {
-      decoyStatusEl.textContent = "Please enter a valid game PIN.";
-    }
-    return;
-  }
-
-  if (!nickname) {
-    if (decoyStatusEl) {
-      decoyStatusEl.textContent = "Please enter a nickname.";
+      decoyStatusEl.textContent = "Please enter a valid PIN.";
     }
     return;
   }
@@ -845,13 +836,6 @@ function initShell() {
   if (decoyPinInput) {
     decoyPinInput.addEventListener("input", onDecoyPinInput);
     decoyPinInput.addEventListener("blur", onDecoyPinInput);
-  }
-  if (decoyNicknameInput) {
-    decoyNicknameInput.addEventListener("input", () => {
-      if (decoyStatusEl) {
-        decoyStatusEl.textContent = "";
-      }
-    });
   }
 }
 
