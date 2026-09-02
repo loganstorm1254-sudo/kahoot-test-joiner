@@ -153,6 +153,7 @@ async function onJoin() {
   setConnected(true);
   setStatus(`Joining ${count} player${count === 1 ? "" : "s"}… (first join can take ~30s)`);
   logActivity(`Starting Blooket batch: ${count} player${count === 1 ? "" : "s"}, game ${gameId}`);
+  logActivity("Allow popups for this site if your browser asks.", { level: "info" });
 
   try {
     const batch = await requestBlooketJoins(gameId, nicknames);

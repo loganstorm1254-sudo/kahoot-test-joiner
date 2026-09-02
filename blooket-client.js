@@ -1,8 +1,8 @@
-import { encryptBlooketPayload } from "./blooket-crypto.js";
-import { BLOOKET_JOIN_WORKER_URL, normalizeBlooketGameId } from "./blooket-shared.js";
+import { normalizeBlooketGameId } from "./blooket-shared.js";
 
 const BLOOKET_JOIN_URL = "https://fb.blooket.com/c/firebase/join";
 const BLOOKET_PLAY_ORIGIN = "https://play.blooket.com";
+const RELAY_SOURCE = "blooket-relay";
 
 const BLOOKET_FIREBASE_CONFIG = {
   apiKey: "AIzaSyCA-cTOnX19f6LFnDVVsHXya3k6ByP_MnU",
@@ -64,17 +64,142 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function loadBlooketBuildConfig() {
-  try {
-    const workerResponse = await fetch(BLOOKET_JOIN_WORKER_URL, { method: "GET" });
-    const workerData = await workerResponse.json().catch(() => ({}));
-    if (workerResponse.ok && workerData.buildId && workerData.secret) {
-      return workerData;
+let playTabWarmed = false;
+
+function warmPlayTab() {
+  if (playTabWarmed) {
+    return;
+  }
+  const popup = window.open(
+    `${BLOOKET_PLAY_ORIGIN}/play`,
+    "blooket_warm",
+    "width=1,height=1,left=-2000,top=-2000,noopener",
+  );
+  if (popup) {
+    playTabWarmed = true;
+    setTimeout(() => {
+      try {
+        popup.close();
+      } catch {
+        // Ignore close errors.
+      }
+    }, 2500);
+  }
+}
+
+function buildRelayHtml(jobId, gameId, name, buildConfig = null) {
+  const payload = JSON.stringify({ id: String(gameId), name: String(name) });
+  const buildId = buildConfig?.buildId ? JSON.stringify(buildConfig.buildId) : "null";
+  const secret = buildConfig?.secret ? JSON.stringify(buildConfig.secret) : "null";
+
+  return `<!DOCTYPE html><html><body><script>
+(async function () {
+  const reply = (payload) => {
+    try {
+      opener.postMessage(Object.assign({ source: ${JSON.stringify(RELAY_SOURCE)}, jobId: ${JSON.stringify(jobId)} }, payload), "*");
+    } catch (error) {}
+    setTimeout(() => window.close(), 50);
+  };
+
+  async function parseJoinResponse(response) {
+    const text = await response.text();
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { success: false, msg: "Invalid response (HTTP " + response.status + ")." };
     }
-  } catch {
-    // Fall back to the Vercel build route.
+    if (!data.success && !data.msg) {
+      data.msg = response.status === 403 ? "Blocked by Blooket (HTTP 403)." : "Could not join that game.";
+    }
+    data.httpStatus = response.status;
+    return data;
   }
 
+  async function digestSecret(value) {
+    const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+    return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt"]);
+  }
+
+  async function encryptPayload(payload, secret) {
+    const blocks = new TextEncoder().encode(JSON.stringify(payload));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await digestSecret(secret);
+    const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, blocks);
+    const ivText = Array.from(iv, (byte) => String.fromCharCode(byte)).join("");
+    const cipherText = Array.from(new Uint8Array(ciphertext), (byte) => String.fromCharCode(byte)).join("");
+    return btoa(ivText + cipherText);
+  }
+
+  try {
+    const payload = ${payload};
+    let response = await fetch(${JSON.stringify(BLOOKET_JOIN_URL)}, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    let joinData = await parseJoinResponse(response);
+
+    const buildId = ${buildId};
+    const secret = ${secret};
+    if (!joinData.success && buildId && secret) {
+      const body = await encryptPayload(payload, secret);
+      response = await fetch(${JSON.stringify(BLOOKET_JOIN_URL)}, {
+        method: "PUT",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Blooket-Build": buildId,
+        },
+        body,
+      });
+      joinData = await parseJoinResponse(response);
+    }
+
+    reply({ result: joinData });
+  } catch (error) {
+    reply({ error: error && error.message ? error.message : "Join failed." });
+  }
+})();
+<\/script></body></html>`;
+}
+
+function joinViaRelayPopup(gameId, name, buildConfig = null) {
+  return new Promise((resolve, reject) => {
+    const jobId = `bj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const timeoutId = setTimeout(() => {
+      window.removeEventListener("message", onMessage);
+      reject(new Error("Join timed out. Allow popups for this site, then click Enter again."));
+    }, 30000);
+
+    const onMessage = (event) => {
+      if (!event.data || event.data.source !== RELAY_SOURCE || event.data.jobId !== jobId) {
+        return;
+      }
+      window.removeEventListener("message", onMessage);
+      clearTimeout(timeoutId);
+      if (event.data.error) {
+        reject(new Error(event.data.error));
+        return;
+      }
+      resolve(event.data.result);
+    };
+
+    window.addEventListener("message", onMessage);
+
+    const html = buildRelayHtml(jobId, gameId, name, buildConfig);
+    const url = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+    const popup = window.open(url, "blooket_join_relay", "width=1,height=1,left=-2000,top=-2000,noopener");
+    if (!popup) {
+      window.removeEventListener("message", onMessage);
+      clearTimeout(timeoutId);
+      reject(new Error("Allow popups for this site, then click Enter again."));
+    }
+  });
+}
+
+async function loadBlooketBuildConfig() {
   const response = await fetch("/api/blooket-build");
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.buildId || !data.secret) {
@@ -83,71 +208,25 @@ async function loadBlooketBuildConfig() {
   return data;
 }
 
-async function joinBlooketPlain(gameId, name) {
-  const response = await fetch(BLOOKET_JOIN_URL, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: String(gameId), name: String(name) }),
-  });
-  return parseJoinResponse(response);
-}
-
-async function joinBlooketEncrypted(gameId, name, buildConfig) {
-  const payload = { id: String(gameId), name: String(name) };
-  const body = await encryptBlooketPayload(payload, buildConfig.secret);
-  const response = await fetch(BLOOKET_JOIN_URL, {
-    method: "PUT",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Blooket-Build": buildConfig.buildId,
-    },
-    body,
-  });
-  return parseJoinResponse(response);
-}
-
-async function parseJoinResponse(response) {
-  const text = await response.text();
-  let data = {};
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { success: false, msg: `Invalid response (HTTP ${response.status}).` };
-  }
-  if (!data.success && !data.msg) {
-    data.msg =
-      response.status === 403 ? "Blocked by Blooket (HTTP 403)." : "Could not join that game.";
-  }
-  data.httpStatus = response.status;
-  return data;
-}
-
-async function joinBlooketFromBrowser(gameId, name, buildConfig = null) {
-  let joinData = await joinBlooketPlain(gameId, name);
+async function joinOnePlayer(gameId, name) {
+  let joinData = await joinViaRelayPopup(gameId, name);
   if (!joinData.success) {
-    const config = buildConfig || (await loadBlooketBuildConfig());
-    joinData = await joinBlooketEncrypted(gameId, name, config);
+    try {
+      const buildConfig = await loadBlooketBuildConfig();
+      joinData = await joinViaRelayPopup(gameId, name, buildConfig);
+    } catch {
+      // Keep the plain-join error.
+    }
   }
   return joinData;
 }
 
-async function requestBlooketJoinsFromBrowser(gameId, names) {
-  let buildConfig = null;
+async function requestBlooketJoinsFromRelay(gameId, names) {
+  warmPlayTab();
   const joins = [];
 
   for (const name of names) {
-    let joinData = await joinBlooketPlain(gameId, name);
-    if (!joinData.success) {
-      try {
-        buildConfig ||= await loadBlooketBuildConfig();
-        joinData = await joinBlooketEncrypted(gameId, name, buildConfig);
-      } catch {
-        // Keep the plain-join error if encrypted fallback cannot run.
-      }
-    }
-
+    const joinData = await joinOnePlayer(gameId, name);
     joins.push({ name, ...joinData });
     await sleep(120);
   }
@@ -168,22 +247,7 @@ async function requestBlooketJoinsFromBrowser(gameId, names) {
 }
 
 export async function requestBlooketJoins(gameId, names) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 180000);
-
-  try {
-    return await requestBlooketJoinsFromBrowser(gameId, names);
-  } catch (error) {
-    if (error.name === "AbortError") {
-      throw new Error("Join timed out — try fewer players or retry.");
-    }
-    if (error instanceof TypeError || /failed to fetch|cors|network/i.test(error?.message || "")) {
-      throw new Error("Browser could not reach Blooket. Hard refresh and retry.");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return requestBlooketJoinsFromRelay(gameId, names);
 }
 
 export class BlooketJoiner {
