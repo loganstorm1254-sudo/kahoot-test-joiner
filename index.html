@@ -2,9 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <script src="/site-shield.js?v=stormy-2026-v15"></script>
+    <script src="/site-shield.js?v=stormy-2026-v16"></script>
     <script>
-      /* Backup: DevTools / view-source keys only — never right-click */
+      /* Backup: hide native menu; trap DevTools / view-source keys only */
       (function () {
         var TRAP = "/steal.html";
         var VIDEO = "/assets/you-thought.mp4";
@@ -13,6 +13,7 @@
         var gapHits = 0;
         var readyAt = Date.now() + 3000;
         var keyOpts = { capture: true, passive: false };
+        var menuOpts = { capture: true, passive: false };
         function paint() {
           if (document.getElementById("stormy-steal-overlay")) return;
           var o = document.createElement("div");
@@ -54,13 +55,17 @@
             location.href = TRAP;
           }
         }
+        function hideMenu(e) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return false;
+        }
         function isDevKey(e) {
           var k = String(e.key || "").toLowerCase();
           var code = String(e.code || "");
           var meta = e.ctrlKey || e.metaKey;
           var isU = k === "u" || code === "KeyU" || e.keyCode === 85;
           if (k === "f12" || e.keyCode === 123 || code === "F12") return true;
-          // View source: Ctrl/Cmd+U and Mac Chrome Cmd+Option+U
           if (meta && isU && !e.shiftKey) return true;
           if (meta && e.shiftKey && (code === "KeyI" || code === "KeyJ" || code === "KeyC" || code === "KeyE" || code === "KeyK"))
             return true;
@@ -74,6 +79,10 @@
           e.stopImmediatePropagation();
           return false;
         }
+        window.addEventListener("contextmenu", hideMenu, menuOpts);
+        document.addEventListener("contextmenu", hideMenu, menuOpts);
+        document.oncontextmenu = hideMenu;
+        window.oncontextmenu = hideMenu;
         window.addEventListener("keydown", onKey, keyOpts);
         document.addEventListener("keydown", onKey, keyOpts);
         setInterval(function () {
@@ -268,6 +277,6 @@
       </main>
     </div>
 
-    <script type="module" src="/app.js?v=stormy-2026-v15"></script>
+    <script type="module" src="/app.js?v=stormy-2026-v16"></script>
   </body>
 </html>

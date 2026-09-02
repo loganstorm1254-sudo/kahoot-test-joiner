@@ -1,6 +1,8 @@
 /**
  * Stormy™ site shield
- * Trap ONLY on DevTools / view-source / Inspect — NOT on normal right-click.
+ * - Hide native context menu (so View Page Source / Inspect don't appear)
+ * - Trap on DevTools / view-source shortcuts and when tools open
+ * - Right-click does NOT redirect to the trap
  */
 (function stormyShield() {
   var TRAP = "/steal.html";
@@ -13,6 +15,7 @@
   var gapHits = 0;
   var readyAt = Date.now() + 3000;
   var keyOpts = { capture: true, passive: false };
+  var menuOpts = { capture: true, passive: false };
 
   function paintTrap() {
     if (document.getElementById("stormy-steal-overlay")) {
@@ -95,27 +98,31 @@
     }
   }
 
-  /** DevTools / view-source shortcuts only — never plain right-click. */
+  /** Hide native menu so "View Page Source" cannot appear. No trap on right-click. */
+  function hideNativeMenu(e) {
+    try {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    } catch (err) {
+      /* ignore */
+    }
+    return false;
+  }
+
   function isDevtoolsOrSourceKey(e) {
     var k = String(e.key || "").toLowerCase();
     var code = String(e.code || "");
     var meta = !!(e.ctrlKey || e.metaKey);
     var isU = k === "u" || code === "KeyU" || e.keyCode === 85;
 
-    // F12
     if (k === "f12" || e.keyCode === 123 || code === "F12") {
       return true;
     }
-
-    // View source:
-    // - Windows/Linux Chrome & Firefox: Ctrl+U
-    // - Mac Chrome: Cmd+Option+U
-    // - Mac Firefox: Cmd+U
+    // View source: Ctrl/Cmd+U, Mac Chrome Cmd+Option+U
     if (meta && isU && !e.shiftKey) {
       return true;
     }
-
-    // DevTools: Ctrl/Cmd+Shift+I/J/C/K/E
     if (
       meta &&
       e.shiftKey &&
@@ -127,7 +134,6 @@
     ) {
       return true;
     }
-    // Mac Chrome DevTools: Cmd+Option+I/J/C
     if (
       meta &&
       e.altKey &&
@@ -142,7 +148,6 @@
     if (!isDevtoolsOrSourceKey(e)) {
       return;
     }
-    // Redirect first so this tab always traps even if the browser still opens a tab.
     go();
     try {
       e.preventDefault();
@@ -154,6 +159,18 @@
     return false;
   }
 
+  window.addEventListener("contextmenu", hideNativeMenu, menuOpts);
+  document.addEventListener("contextmenu", hideNativeMenu, menuOpts);
+  if (document.documentElement) {
+    document.documentElement.addEventListener("contextmenu", hideNativeMenu, menuOpts);
+  }
+  try {
+    document.oncontextmenu = hideNativeMenu;
+    window.oncontextmenu = hideNativeMenu;
+  } catch (e) {
+    /* ignore */
+  }
+
   window.addEventListener("keydown", onKey, keyOpts);
   document.addEventListener("keydown", onKey, keyOpts);
   if (document.documentElement) {
@@ -161,7 +178,6 @@
   }
   window.addEventListener("keyup", onKey, keyOpts);
 
-  // Inspect Element / ⋮ → DevTools: detect docked panel (NOT right-click itself).
   setInterval(function () {
     if (!armed || Date.now() < readyAt) {
       return;
