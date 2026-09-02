@@ -1,12 +1,4 @@
-import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import {
-  getDatabase,
-  ref,
-  set,
-  update,
-  onValue,
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { normalizeBlooketGameId } from "./blooket-shared.js";
 
 const BLOOKET_FIREBASE_CONFIG = {
   apiKey: "AIzaSyCA-cTOnX19f6LFnDVVsHXya3k6ByP_MnU",
@@ -36,6 +28,19 @@ const DEFAULT_BLOOKS = [
   "Owl",
 ];
 
+let firebaseModulesPromise;
+
+function loadFirebaseModules() {
+  if (!firebaseModulesPromise) {
+    firebaseModulesPromise = Promise.all([
+      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js"),
+    ]).then(([app, auth, database]) => ({ app, auth, database }));
+  }
+  return firebaseModulesPromise;
+}
+
 function randomBlook() {
   return DEFAULT_BLOOKS[Math.floor(Math.random() * DEFAULT_BLOOKS.length)];
 }
@@ -44,9 +49,7 @@ function sanitizeAppName(name) {
   return `blooket-${String(name).replace(/[^a-zA-Z0-9]/g, "_").slice(0, 24)}-${Date.now()}`;
 }
 
-export function normalizeBlooketGameId(value) {
-  return String(value || "").replace(/\D/g, "");
-}
+export { normalizeBlooketGameId } from "./blooket-shared.js";
 
 export function isValidBlooketGameId(value) {
   const digits = normalizeBlooketGameId(value);
@@ -105,6 +108,7 @@ export class BlooketJoiner {
     this.questionUnsubscribe = null;
     this.lastQuestionKey = "";
     this.blook = "Dog";
+    this.firebase = null;
   }
 
   status(message) {
@@ -152,7 +156,10 @@ export class BlooketJoiner {
     try {
       this.status(`Joining as ${this.nickname}…`);
 
-      const app = initializeApp(
+      const { app: appModule, auth: authModule, database: databaseModule } = await loadFirebaseModules();
+      this.firebase = { appModule, authModule, databaseModule };
+
+      const app = appModule.initializeApp(
         {
           ...BLOOKET_FIREBASE_CONFIG,
           databaseURL: joinData.fbShardURL,
@@ -160,13 +167,13 @@ export class BlooketJoiner {
         sanitizeAppName(this.nickname),
       );
       this.firebaseApp = app;
-      const auth = getAuth(app);
-      await signInWithCustomToken(auth, joinData.fbToken);
+      const auth = authModule.getAuth(app);
+      await authModule.signInWithCustomToken(auth, joinData.fbToken);
 
-      const db = getDatabase(app);
+      const db = databaseModule.getDatabase(app);
       this.database = db;
 
-      await set(ref(db, `${this.gameId}/c/${this.nickname}`), {
+      await databaseModule.set(databaseModule.ref(db, `${this.gameId}/c/${this.nickname}`), {
         b: this.blook,
       });
 
@@ -187,12 +194,13 @@ export class BlooketJoiner {
   }
 
   watchQuestions() {
-    if (!this.database || this.closed) {
+    if (!this.database || this.closed || !this.firebase) {
       return;
     }
 
-    const questionRef = ref(this.database, `${this.gameId}/q`);
-    this.questionUnsubscribe = onValue(questionRef, (snapshot) => {
+    const { database: databaseModule } = this.firebase;
+    const questionRef = databaseModule.ref(this.database, `${this.gameId}/q`);
+    this.questionUnsubscribe = databaseModule.onValue(questionRef, (snapshot) => {
       if (this.closed || !this.joined) {
         return;
       }
@@ -215,10 +223,11 @@ export class BlooketJoiner {
   }
 
   async answerQuestion(question) {
-    if (!this.database || this.closed) {
+    if (!this.database || this.closed || !this.firebase) {
       return;
     }
 
+    const { database: databaseModule } = this.firebase;
     const answers = Array.isArray(question.answers) ? question.answers : [];
     const correctAnswers = Array.isArray(question.correctAnswers) ? question.correctAnswers : [];
     if (!answers.length || !correctAnswers.length) {
@@ -238,7 +247,7 @@ export class BlooketJoiner {
     }
 
     const answerValue = question.qType === "typing" ? answers[choiceIndex] : choiceIndex;
-    await update(ref(this.database, `${this.gameId}/c/${this.nickname}`), {
+    await databaseModule.update(databaseModule.ref(this.database, `${this.gameId}/c/${this.nickname}`), {
       a: answerValue,
       tat: Date.now(),
     });
@@ -259,11 +268,12 @@ export class BlooketJoiner {
       this.questionUnsubscribe = null;
     }
 
-    if (this.firebaseApp) {
-      deleteApp(this.firebaseApp).catch(() => {});
+    if (this.firebaseApp && this.firebase?.appModule) {
+      this.firebase.appModule.deleteApp(this.firebaseApp).catch(() => {});
       this.firebaseApp = null;
     }
     this.database = null;
+    this.firebase = null;
   }
 
   isRunning() {

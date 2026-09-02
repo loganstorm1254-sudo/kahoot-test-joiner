@@ -4,9 +4,9 @@ import {
   normalizeBlooketGameId,
   requestBlooketJoins,
 } from "./blooket-client.js";
+import { BLOOKET_SECRET_CODE, isBlooketSecretCode } from "./blooket-shared.js";
 import { generateRandomName, generateUniqueNames } from "./name-generator.js";
 
-const BLOOKET_SECRET_CODE = "1254";
 const MAX_PLAYERS = 44;
 
 let session = 0;
@@ -243,8 +243,4 @@ function onRandomNamesToggle() {
   }
 }
 
-export function isBlooketSecretCode(value) {
-  return normalizeBlooketGameId(value) === BLOOKET_SECRET_CODE;
-}
-
-export { BLOOKET_SECRET_CODE };
+export { BLOOKET_SECRET_CODE, isBlooketSecretCode } from "./blooket-shared.js";

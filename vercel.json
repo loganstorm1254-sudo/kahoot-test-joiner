@@ -49,7 +49,7 @@
       ]
     },
     {
-      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|blooket-client|blooket-app|blooket-crypto|version)\\.js",
+      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|blooket-client|blooket-app|blooket-shared|blooket-crypto|version)\\.js",
       "headers": [
         {
           "key": "Cache-Control",

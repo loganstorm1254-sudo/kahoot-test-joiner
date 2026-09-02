@@ -13,7 +13,7 @@ import {
 } from "./quiz-answers.js";
 import { CLIENT_BUILD } from "./version.js";
 import { appendActivityLog, appendActivitySteps, clearActivityLog } from "./activity-log.js";
-import { initBlooketJoiner, isBlooketSecretCode } from "./blooket-app.js";
+import { isBlooketSecretCode } from "./blooket-shared.js";
 
 const pinInput = document.getElementById("pin");
 const nameInput = document.getElementById("name");
@@ -650,6 +650,9 @@ function onDisconnect() {
 }
 
 function onRandomNamesToggle() {
+  if (!nameInput || !randomNamesCheck) {
+    return;
+  }
   nameInput.disabled = randomNamesCheck.checked || connected;
   if (randomNamesCheck.checked) {
     nameInput.placeholder = generateRandomName();
@@ -682,11 +685,11 @@ function onAutoAnswerToggle() {
   }
 }
 
-countSlider.addEventListener("input", () => {
+countSlider?.addEventListener("input", () => {
   setPlayerCount(countSlider.value);
 });
 
-countInput.addEventListener("input", () => {
+countInput?.addEventListener("input", () => {
   const raw = countInput.value.trim();
   if (!raw) {
     return;
@@ -702,19 +705,19 @@ countInput.addEventListener("input", () => {
   }
 });
 
-countInput.addEventListener("change", () => {
+countInput?.addEventListener("change", () => {
   setPlayerCount(countInput.value);
 });
 
-countInput.addEventListener("blur", () => {
+countInput?.addEventListener("blur", () => {
   setPlayerCount(countInput.value);
 });
-randomNamesCheck.addEventListener("change", onRandomNamesToggle);
-autoAnswerCheck.addEventListener("change", onAutoAnswerToggle);
-pinInput.addEventListener("input", onPinInput);
-pinInput.addEventListener("blur", onPinInput);
-joinButton.addEventListener("click", onJoin);
-disconnectButton.addEventListener("click", onDisconnect);
+randomNamesCheck?.addEventListener("change", onRandomNamesToggle);
+autoAnswerCheck?.addEventListener("change", onAutoAnswerToggle);
+pinInput?.addEventListener("input", onPinInput);
+pinInput?.addEventListener("blur", onPinInput);
+joinButton?.addEventListener("click", onJoin);
+disconnectButton?.addEventListener("click", onDisconnect);
 const clearLogButton = document.getElementById("clear-log");
 if (clearLogButton) {
   clearLogButton.addEventListener("click", () => clearActivityLog());
@@ -834,8 +837,20 @@ function handleQuickExitKey(event) {
 
   if (quickExitBuffer === QUICK_EXIT_SEQUENCE) {
     resetQuickExitBuffer();
-    if (activeView === VIEW.KAHOOT_DECOY || activeView === VIEW.KAHOOT_JOINER) {
-      setActiveView(activeView === VIEW.KAHOOT_JOINER ? VIEW.KAHOOT_DECOY : VIEW.KAHOOT_JOINER);
+    if (activeView === VIEW.KAHOOT_DECOY) {
+      setActiveView(VIEW.KAHOOT_JOINER);
+      return;
+    }
+    if (activeView === VIEW.KAHOOT_JOINER) {
+      setActiveView(VIEW.KAHOOT_DECOY);
+      return;
+    }
+    if (activeView === VIEW.BLOOKET_DECOY) {
+      setActiveView(VIEW.BLOOKET_JOINER);
+      return;
+    }
+    if (activeView === VIEW.BLOOKET_JOINER) {
+      setActiveView(VIEW.BLOOKET_DECOY);
     }
   }
 }
@@ -1017,15 +1032,29 @@ function initShell() {
     blooketDecoyGameIdInput.addEventListener("blur", onBlooketDecoyGameIdInput);
   }
 
-  initBlooketJoiner();
+  import("./blooket-app.js")
+    .then((module) => module.initBlooketJoiner())
+    .catch((error) => {
+      console.error("Blooket joiner failed to load:", error);
+    });
 }
 
-setPlayerCount(1);
-onRandomNamesToggle();
-initShell();
-startPrefetchRetryLoop();
-schedulePrefetch(pinInput.value);
-checkForUpdates({ initial: true });
-setInterval(() => {
-  checkForUpdates();
-}, 30000);
+function boot() {
+  try {
+    initShell();
+    if (countSlider && countInput) {
+      setPlayerCount(1);
+    }
+    onRandomNamesToggle();
+    startPrefetchRetryLoop();
+    schedulePrefetch(pinInput?.value || "");
+    checkForUpdates({ initial: true });
+    setInterval(() => {
+      checkForUpdates();
+    }, 30000);
+  } catch (error) {
+    console.error("App failed to start:", error);
+  }
+}
+
+boot();
