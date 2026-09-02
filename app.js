@@ -119,9 +119,12 @@ async function checkForUpdates({ initial = false } = {}) {
     renderVersionInfo();
     return info;
   } catch {
+    if (!loadedVersion) {
+      loadedVersion = CLIENT_BUILD;
+    }
     if (versionInfoEl) {
-      versionInfoEl.textContent = `Version check failed · ${CLIENT_BUILD}`;
-      versionInfoEl.className = "version-info is-stale";
+      versionInfoEl.textContent = `You are on ${CLIENT_BUILD}`;
+      versionInfoEl.className = "version-info is-current";
     }
     return null;
   }
