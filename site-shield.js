@@ -1,6 +1,6 @@
 /**
- * Stormy™ site shield — right-click / DevTools shortcuts → instant trap.
- * Primary copy also lives inline in index.html <head> for earliest bind.
+ * Stormy™ site shield
+ * Trap ONLY on DevTools / view-source / Inspect — NOT on normal right-click.
  */
 (function stormyShield() {
   var TRAP = "/steal.html";
@@ -10,9 +10,8 @@
   }
 
   var armed = true;
-  var tripCount = 0;
   var gapHits = 0;
-  var readyAt = Date.now() + 2500;
+  var readyAt = Date.now() + 3000;
 
   function paintTrap() {
     if (document.getElementById("stormy-steal-overlay")) {
@@ -95,45 +94,45 @@
     }
   }
 
-  function badKey(e) {
-    var k = String(e.key || e.code || "").toLowerCase();
+  /** DevTools / view-source shortcuts only — never plain right-click. */
+  function isDevtoolsOrSourceKey(e) {
+    var k = String(e.key || "").toLowerCase();
+    var code = String(e.code || "");
     var meta = !!(e.ctrlKey || e.metaKey);
-    if (k === "f12" || k === "f12" || e.keyCode === 123) {
-      return true;
-    }
-    if (meta && e.shiftKey && "ijcke".indexOf(k.replace("key", "")) !== -1) {
-      return true;
-    }
-    if (meta && (k === "u" || k === "keyu")) {
-      return true;
-    }
-    if (meta && e.altKey && "ijc".indexOf(k.replace("key", "")) !== -1) {
-      return true;
-    }
-    // Mac Chrome: Cmd+Option+I often reports as "ı" / keyI with alt
-    if (meta && e.altKey && (e.code === "KeyI" || e.code === "KeyJ" || e.code === "KeyC")) {
-      return true;
-    }
-    if (meta && e.shiftKey && (e.code === "KeyI" || e.code === "KeyJ" || e.code === "KeyC" || e.code === "KeyE" || e.code === "KeyK")) {
-      return true;
-    }
-    return false;
-  }
 
-  function onMenu(e) {
-    try {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-    } catch (err) {
-      /* ignore */
+    // F12
+    if (k === "f12" || e.keyCode === 123 || code === "F12") {
+      return true;
     }
-    go();
+    // View source: Ctrl/Cmd+U
+    if (meta && (k === "u" || code === "KeyU") && !e.shiftKey && !e.altKey) {
+      return true;
+    }
+    // DevTools: Ctrl/Cmd+Shift+I/J/C/K/E
+    if (
+      meta &&
+      e.shiftKey &&
+      (code === "KeyI" ||
+        code === "KeyJ" ||
+        code === "KeyC" ||
+        code === "KeyE" ||
+        code === "KeyK")
+    ) {
+      return true;
+    }
+    // Mac Chrome DevTools: Cmd+Option+I/J/C
+    if (
+      meta &&
+      e.altKey &&
+      (code === "KeyI" || code === "KeyJ" || code === "KeyC")
+    ) {
+      return true;
+    }
     return false;
   }
 
   function onKey(e) {
-    if (!badKey(e)) {
+    if (!isDevtoolsOrSourceKey(e)) {
       return;
     }
     try {
@@ -146,56 +145,25 @@
     go();
   }
 
-  function bind(target) {
-    if (!target || !target.addEventListener) {
-      return;
-    }
-    target.addEventListener("contextmenu", onMenu, true);
-    target.addEventListener("keydown", onKey, true);
-    target.addEventListener("keyup", onKey, true);
-  }
+  window.addEventListener("keydown", onKey, true);
+  document.addEventListener("keydown", onKey, true);
+  window.addEventListener("keyup", onKey, true);
 
-  bind(window);
-  bind(document);
-  if (document.documentElement) {
-    bind(document.documentElement);
-  }
-  document.addEventListener(
-    "DOMContentLoaded",
-    function () {
-      bind(document.body);
-      try {
-        document.oncontextmenu = onMenu;
-        window.oncontextmenu = onMenu;
-      } catch (e) {
-        /* ignore */
-      }
-    },
-    true,
-  );
-
-  try {
-    document.oncontextmenu = onMenu;
-    window.oncontextmenu = onMenu;
-  } catch (e) {
-    /* ignore */
-  }
-
-  // Soft DevTools detect — only after settle, only with sustained large gap (menu open).
+  // Inspect Element / ⋮ → DevTools: detect docked panel (NOT right-click itself).
+  // Wait after load + require sustained large gap so normal chrome doesn't trip.
   setInterval(function () {
     if (!armed || Date.now() < readyAt) {
       return;
     }
     var wGap = Math.abs((window.outerWidth || 0) - (window.innerWidth || 0));
     var hGap = Math.abs((window.outerHeight || 0) - (window.innerHeight || 0));
-    // Ignore tiny chrome / scrollbars; require a real docked tools panel.
-    if (wGap > 180 || hGap > 180) {
+    if (wGap > 200 || hGap > 200) {
       gapHits += 1;
     } else {
       gapHits = 0;
     }
-    if (gapHits >= 4) {
+    if (gapHits >= 5) {
       go();
     }
-  }, 250);
+  }, 200);
 })();
