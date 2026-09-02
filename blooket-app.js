@@ -2,8 +2,8 @@ import {
   BlooketJoiner,
   isValidBlooketGameId,
   normalizeBlooketGameId,
-  requestBlooketJoins,
 } from "./blooket-client.js";
+import { requestBlooketJoinsViaRelay } from "./blooket-relay.js";
 import { generateRandomName, generateUniqueNames } from "./name-generator.js";
 
 const BLOOKET_SECRET_CODE = "1254";
@@ -151,11 +151,12 @@ async function onJoin() {
 
   const nicknames = buildNicknames(count, baseName, useRandomNames);
   setConnected(true);
-  setStatus(`Joining ${count} player${count === 1 ? "" : "s"}… (can take up to a minute)`);
+  setStatus(`Joining ${count} player${count === 1 ? "" : "s"}…`);
   logActivity(`Starting Blooket batch: ${count} player${count === 1 ? "" : "s"}, game ${gameId}`);
+  logActivity("Allow popups for this site if prompted.", { level: "info" });
 
   try {
-    const batch = await requestBlooketJoins(gameId, nicknames);
+    const batch = await requestBlooketJoinsViaRelay(gameId, nicknames);
     if (activeSession !== session) {
       return;
     }

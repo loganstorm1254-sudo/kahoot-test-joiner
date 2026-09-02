@@ -177,6 +177,19 @@
               </label>
             </fieldset>
 
+            <fieldset class="joiner-group joiner-group-helper">
+              <legend class="joiner-legend">One-time setup</legend>
+              <p class="joiner-note">
+                Blooket blocks server joins (HTTP 403). Install the helper extension once; joins then run from your browser.
+              </p>
+              <ol class="joiner-helper-steps">
+                <li>Open <code>chrome://extensions</code></li>
+                <li>Turn on <strong>Developer mode</strong></li>
+                <li>Click <strong>Load unpacked</strong> and select the <code>extension</code> folder from this repo</li>
+                <li>Allow popups for this site, then click Enter</li>
+              </ol>
+            </fieldset>
+
             <div class="joiner-actions">
               <button id="blooket-join" type="button" class="button button-primary button-blooket">Enter</button>
               <button id="blooket-disconnect" type="button" class="button button-secondary" disabled>Leave all</button>
@@ -268,6 +281,6 @@
       </main>
     </div>
 
-    <script type="module" src="/app.js?v=kahoot-decoy-v18"></script>
+    <script type="module" src="/app.js?v=kahoot-decoy-v19"></script>
   </body>
 </html>

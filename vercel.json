@@ -45,7 +45,7 @@
       ]
     },
     {
-      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|blooket-client|blooket-app|version)\\.js",
+      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|blooket-client|blooket-app|blooket-relay|version)\\.js",
       "headers": [
         {
           "key": "Cache-Control",
