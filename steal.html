@@ -95,6 +95,7 @@
 
         var fromGesture = /(?:^|[?&])g=1(?:&|$)/.test(String(location.search || ""));
         var soundOn = false;
+        var booting = false;
 
         video.controls = false;
         video.loop = true;
@@ -108,7 +109,7 @@
         }
 
         function showHint() {
-          if (hint) {
+          if (hint && !soundOn) {
             hint.classList.remove("is-hidden");
           }
         }
@@ -128,19 +129,27 @@
         }
 
         function boot() {
+          if (booting) return;
+          booting = true;
+          var done = function () {
+            booting = false;
+          };
+
           if (fromGesture) {
             playLoud().catch(function () {
-              playSafe().then(showHint);
+              playSafe().then(showHint).finally(done);
             });
             return;
           }
+
           playSafe()
             .then(function () {
               return playLoud();
             })
             .catch(function () {
               showHint();
-            });
+            })
+            .finally(done);
         }
 
         function unlockSound() {
@@ -151,29 +160,12 @@
         }
 
         boot();
-        video.addEventListener("loadeddata", boot);
-        video.addEventListener("canplay", function () {
-          if (!soundOn) {
-            boot();
-          }
-        });
-        video.addEventListener("pause", function () {
-          if (!video.ended) {
-            boot();
-          }
-        });
+        video.addEventListener("loadeddata", boot, { once: true });
 
         if (hint) {
           hint.addEventListener("click", unlockSound);
         }
-        document.addEventListener("pointerdown", unlockSound, true);
-        document.addEventListener("keydown", unlockSound, true);
-
-        setInterval(function () {
-          if (video.paused) {
-            boot();
-          }
-        }, 900);
+        document.addEventListener("pointerdown", unlockSound, { once: true, capture: true });
       })();
     </script>
   </body>

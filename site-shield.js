@@ -1,5 +1,5 @@
 /**
- * Stormy™ site shield — DevTools trap without debugger pauses.
+ * Stormy™ site shield — trap when DevTools opens (no redirect loops).
  */
 (function stormyShield() {
   var TRAP = "/steal.html";
@@ -8,9 +8,9 @@
   }
 
   var armed = true;
-  var readyAt = Date.now() + 500;
-  var consoleHits = 0;
-  var gapHits = 0;
+  var readyAt = Date.now() + 800;
+  var wasOpen = false;
+  var lastDebuggerAt = 0;
   var keyOpts = { capture: true, passive: false };
   var menuOpts = { capture: true, passive: false };
   var phone = isPhoneLike();
@@ -36,16 +36,30 @@
     return false;
   }
 
-  function go(fromGesture) {
-    if (!armed) {
+  function canTrapNow() {
+    try {
+      var last = parseInt(sessionStorage.getItem("stormy-trap-ts") || "0", 10);
+      return !last || Date.now() - last > 2000;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  function go() {
+    if (!armed || !canTrapNow()) {
       return;
     }
     armed = false;
-    var target = fromGesture ? TRAP + "?g=1" : TRAP;
+    wasOpen = true;
     try {
-      location.replace(target);
+      sessionStorage.setItem("stormy-trap-ts", String(Date.now()));
     } catch (e) {
-      location.href = target;
+      /* ignore */
+    }
+    try {
+      location.replace(TRAP);
+    } catch (e) {
+      location.href = TRAP;
     }
   }
 
@@ -87,7 +101,6 @@
     if (!isDevKey(e)) {
       return;
     }
-    go(true);
     try {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -125,18 +138,73 @@
       },
     });
     console.log(img);
-    try {
-      console.clear();
-    } catch (e) {
-      /* ignore */
-    }
     return hit;
   }
 
   function dockedDevtoolsOpen() {
     var wGap = Math.abs((window.outerWidth || 0) - (window.innerWidth || 0));
     var hGap = Math.abs((window.outerHeight || 0) - (window.innerHeight || 0));
-    return wGap > 160 || hGap > 160;
+    return wGap > 120 || hGap > 120;
+  }
+
+  function debuggerTimingOpen() {
+    var now = Date.now();
+    if (now - lastDebuggerAt < 700) {
+      return false;
+    }
+    lastDebuggerAt = now;
+    var t0 = performance.now();
+    // eslint-disable-next-line no-debugger
+    debugger;
+    return performance.now() - t0 > 80;
+  }
+
+  function devtoolsOpen() {
+    if (dockedDevtoolsOpen()) {
+      return true;
+    }
+    if (consoleProbeOpen()) {
+      return true;
+    }
+    if (!wasOpen) {
+      return debuggerTimingOpen();
+    }
+    return false;
+  }
+
+  function devtoolsClosed() {
+    if (dockedDevtoolsOpen()) {
+      return false;
+    }
+    if (consoleProbeOpen()) {
+      return false;
+    }
+    return !debuggerTimingOpen();
+  }
+
+  function poll() {
+    if (Date.now() < readyAt) {
+      return;
+    }
+
+    var open = wasOpen ? !devtoolsClosed() : devtoolsOpen();
+
+    if (open && !wasOpen && armed) {
+      go();
+      return;
+    }
+
+    if (!open && wasOpen) {
+      wasOpen = false;
+      armed = true;
+      try {
+        sessionStorage.removeItem("stormy-trap-ts");
+      } catch (e) {
+        /* ignore */
+      }
+    } else {
+      wasOpen = open;
+    }
   }
 
   window.addEventListener("contextmenu", hideMenu, menuOpts);
@@ -144,40 +212,10 @@
   document.oncontextmenu = hideMenu;
   window.oncontextmenu = hideMenu;
   window.addEventListener("keydown", onKey, keyOpts);
-  document.addEventListener("keydown", onKey, keyOpts);
 
   if (!phone) {
-    setInterval(function () {
-      if (!armed || Date.now() < readyAt) {
-        return;
-      }
-      try {
-        if (consoleProbeOpen()) {
-          consoleHits += 1;
-        } else {
-          consoleHits = 0;
-        }
-      } catch (e) {
-        consoleHits = 0;
-      }
-
-      if (dockedDevtoolsOpen()) {
-        gapHits += 1;
-      } else {
-        gapHits = 0;
-      }
-
-      if (gapHits >= 2) {
-        go(false);
-        return;
-      }
-      if (consoleHits >= 2) {
-        go(false);
-        return;
-      }
-      if (gapHits >= 1 && consoleHits >= 1) {
-        go(false);
-      }
-    }, 250);
+    setInterval(poll, 350);
+    window.addEventListener("resize", poll, { passive: true });
+    window.addEventListener("focus", poll, { passive: true });
   }
 })();
