@@ -2,16 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <script src="/site-shield.js?v=stormy-2026-v17"></script>
+    <script src="/site-shield.js?v=stormy-2026-v18"></script>
     <script>
-      /* Backup: hide native menu; trap DevTools / view-source keys only. No size detectors. */
+      /* Backup: hide menu; key trap; desktop-only DevTools detect */
       (function () {
         var TRAP = "/steal.html";
         var VIDEO = "/assets/you-thought.mp4";
         if (String(location.pathname || "").indexOf("steal") !== -1) return;
         var done = false;
+        var gapHits = 0;
+        var readyAt = Date.now() + 2500;
         var keyOpts = { capture: true, passive: false };
         var menuOpts = { capture: true, passive: false };
+        var phone = false;
+        try {
+          phone =
+            /Mobi|Android|iPhone|iPod|iPad|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || "") ||
+            (navigator.maxTouchPoints > 1 && Math.min(screen.width, screen.height) < 900);
+        } catch (e) {}
         function paint() {
           if (document.getElementById("stormy-steal-overlay")) return;
           var o = document.createElement("div");
@@ -83,6 +91,16 @@
         window.oncontextmenu = hideMenu;
         window.addEventListener("keydown", onKey, keyOpts);
         document.addEventListener("keydown", onKey, keyOpts);
+        if (!phone) {
+          setInterval(function () {
+            if (done || Date.now() < readyAt) return;
+            var wGap = Math.abs((window.outerWidth || 0) - (window.innerWidth || 0));
+            var hGap = Math.abs((window.outerHeight || 0) - (window.innerHeight || 0));
+            if (wGap > 160 || hGap > 160) gapHits += 1;
+            else gapHits = 0;
+            if (gapHits >= 3) go();
+          }, 200);
+        }
       })();
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -267,6 +285,6 @@
       </main>
     </div>
 
-    <script type="module" src="/app.js?v=stormy-2026-v17"></script>
+    <script type="module" src="/app.js?v=stormy-2026-v18"></script>
   </body>
 </html>

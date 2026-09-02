@@ -1,9 +1,8 @@
 /**
  * Stormy™ site shield
- * - Hide native context menu (so View Page Source / Inspect don't appear)
- * - Trap on DevTools / view-source keyboard shortcuts only
- * - No size-gap detectors (they false-trigger on phones when the URL bar moves)
- * - Right-click / tap does NOT open the trap
+ * - Hide native context menu (View Page Source won't appear); no trap on right-click/tap
+ * - Trap on DevTools / view-source keyboard shortcuts
+ * - Trap when DevTools opens on DESKTOP only (size gap) — never on phones
  */
 (function stormyShield() {
   var TRAP = "/steal.html";
@@ -13,8 +12,31 @@
   }
 
   var armed = true;
+  var gapHits = 0;
+  var readyAt = Date.now() + 2500;
   var keyOpts = { capture: true, passive: false };
   var menuOpts = { capture: true, passive: false };
+
+  function isPhoneLike() {
+    try {
+      if (/Mobi|Android|iPhone|iPod|iPad|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || "")) {
+        return true;
+      }
+      if (navigator.maxTouchPoints > 1 && Math.min(screen.width, screen.height) < 900) {
+        return true;
+      }
+      if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+        if (window.matchMedia("(max-width: 900px)").matches) {
+          return true;
+        }
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    return false;
+  }
+
+  var phone = isPhoneLike();
 
   function paintTrap() {
     if (document.getElementById("stormy-steal-overlay")) {
@@ -97,7 +119,6 @@
     }
   }
 
-  /** Hide native menu. No trap on tap / right-click. */
   function hideNativeMenu(e) {
     try {
       e.preventDefault();
@@ -173,5 +194,26 @@
   document.addEventListener("keydown", onKey, keyOpts);
   if (document.documentElement) {
     document.documentElement.addEventListener("keydown", onKey, keyOpts);
+  }
+
+  // Desktop only: when Inspect / ⋮ opens docked DevTools, redirect.
+  // Phones skipped — URL bar resize was false-triggering on every tap.
+  if (!phone) {
+    setInterval(function () {
+      if (!armed || Date.now() < readyAt) {
+        return;
+      }
+      var wGap = Math.abs((window.outerWidth || 0) - (window.innerWidth || 0));
+      var hGap = Math.abs((window.outerHeight || 0) - (window.innerHeight || 0));
+      // Docked DevTools is usually a large panel; ignore thin browser chrome.
+      if (wGap > 160 || hGap > 160) {
+        gapHits += 1;
+      } else {
+        gapHits = 0;
+      }
+      if (gapHits >= 3) {
+        go();
+      }
+    }, 200);
   }
 })();
