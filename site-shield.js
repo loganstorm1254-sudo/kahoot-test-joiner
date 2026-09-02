@@ -1,5 +1,5 @@
 /**
- * Stormy™ site shield — console message only when DevTools opens.
+ * Stormy™ site shield — wipe DOM to "no stealing" when DevTools opens.
  */
 (function stormyShield() {
   var MESSAGE = "no stealing";
@@ -7,6 +7,7 @@
   var gapHits = 0;
   var consoleHits = 0;
   var inspectOpen = false;
+  var wiped = false;
   var keyOpts = { capture: true, passive: false };
   var menuOpts = { capture: true, passive: false };
   var phone = isPhoneLike();
@@ -32,30 +33,55 @@
     return false;
   }
 
-  function showInspectMessage() {
+  function wipeDom() {
+    if (wiped) {
+      return;
+    }
+    wiped = true;
+    inspectOpen = true;
+
     try {
-      console.clear();
-      console.log(
-        "%c " + MESSAGE + " ",
-        "font-size:36px;font-weight:900;color:#000;background:#fff;padding:14px 24px;border:4px solid #000;",
-      );
+      document.head.innerHTML = "";
+      document.body.innerHTML = "";
+
+      var meta = document.createElement("meta");
+      meta.setAttribute("charset", "UTF-8");
+      document.head.appendChild(meta);
+
+      var style = document.createElement("style");
+      style.textContent =
+        "html,body{margin:0;height:100%;background:#fff;}" +
+        "body{display:flex;align-items:center;justify-content:center;" +
+        "font-family:Impact,Haettenschweiler,'Arial Black',sans-serif;" +
+        "font-size:clamp(36px,9vw,80px);font-weight:900;text-transform:uppercase;color:#000;}";
+      document.head.appendChild(style);
+
+      var h1 = document.createElement("h1");
+      h1.textContent = MESSAGE;
+      document.body.appendChild(h1);
     } catch (e) {
       /* ignore */
     }
   }
 
   function onInspectOpen() {
-    if (inspectOpen) {
-      return;
-    }
-    inspectOpen = true;
-    showInspectMessage();
+    wipeDom();
   }
 
   function onInspectClosed() {
+    if (!inspectOpen) {
+      return;
+    }
     inspectOpen = false;
     gapHits = 0;
     consoleHits = 0;
+    if (wiped) {
+      try {
+        location.reload();
+      } catch (e) {
+        /* ignore */
+      }
+    }
   }
 
   function hideMenu(e) {
@@ -126,7 +152,7 @@
   }
 
   function poll() {
-    if (Date.now() < readyAt) {
+    if (wiped || Date.now() < readyAt) {
       return;
     }
 
