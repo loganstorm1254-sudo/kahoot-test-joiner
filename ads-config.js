@@ -8,4 +8,5 @@
  *
  * In Adsterra dashboard: do NOT enable Popunder, Social Bar, or Native — banner only.
  */
-export const ADSTERRA_KEY = ""; // atOptions.key from your banner unit code
+export const ADSTERRA_KEY = "a89479f161b7f9763e94bc752b1bd6bf";
+export const ADSTERRA_INVOKE_HOST = "www.highrevenueformat.com";

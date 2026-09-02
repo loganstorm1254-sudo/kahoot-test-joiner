@@ -1,4 +1,4 @@
-import { ADSTERRA_KEY } from "./ads-config.js";
+import { ADSTERRA_KEY, ADSTERRA_INVOKE_HOST } from "./ads-config.js";
 
 function ready() {
   return Boolean(String(ADSTERRA_KEY || "").trim());
@@ -22,7 +22,7 @@ function mountBanner(root) {
 
   const script = document.createElement("script");
   script.async = true;
-  script.src = `https://www.highperformanceformat.com/${encodeURIComponent(key)}/invoke.js`;
+  script.src = `https://${ADSTERRA_INVOKE_HOST}/${encodeURIComponent(key)}/invoke.js`;
   root.appendChild(script);
 }
 
