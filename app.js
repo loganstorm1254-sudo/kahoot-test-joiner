@@ -619,7 +619,7 @@ function onJoin() {
   stopPrefetchRetryLoop();
   clearActivityLog();
 
-  const nicknames = buildNicknames(count, baseName || "bot.locker-rover.dev", useRandomNames);
+  const nicknames = buildNicknames(count, baseName || "kahoot.lopro.cc", useRandomNames);
   appendActivityLog(`Starting batch: ${count} player${count === 1 ? "" : "s"}, PIN ${formatPinForDisplay(pin)}`, {
     source: "system",
   });
@@ -660,7 +660,7 @@ function onRandomNamesToggle() {
   if (randomNamesCheck.checked) {
     nameInput.placeholder = generateRandomName();
   } else {
-    nameInput.placeholder = "bot.locker-rover.dev";
+    nameInput.placeholder = "kahoot.lopro.cc";
   }
 }
 
