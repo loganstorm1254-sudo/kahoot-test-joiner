@@ -88,7 +88,7 @@ export async function requestBlooketJoins(gameId, names) {
     if (!Array.isArray(data.joins)) {
       const hint =
         response.status === 403 || /403|blocked|cloudflare/i.test(data.msg || "")
-          ? " Deploy the Cloudflare join worker and set BLOOKET_JOIN_WORKER_URL in Vercel."
+          ? " Retry in a few seconds."
           : "";
       throw new Error((data.msg || `Join request failed (HTTP ${response.status}).`) + hint);
     }

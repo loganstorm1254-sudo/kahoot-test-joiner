@@ -1,3 +1,5 @@
+import { BLOOKET_JOIN_WORKER_URL } from "../blooket-shared.js";
+
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -12,7 +14,8 @@ export async function OPTIONS() {
 }
 
 export async function GET() {
-  const joinWorkerUrl = String(process.env.BLOOKET_JOIN_WORKER_URL || "").trim() || null;
+  const joinWorkerUrl =
+    String(process.env.BLOOKET_JOIN_WORKER_URL || "").trim() || BLOOKET_JOIN_WORKER_URL;
 
   return Response.json(
     {

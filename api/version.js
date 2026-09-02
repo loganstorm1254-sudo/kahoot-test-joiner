@@ -21,7 +21,7 @@ export async function GET() {
       fullSha: sha,
       label: `build ${shortSha}`,
       deployedAt,
-      features: ["kahoot-decoy-v27", "blooket-decoy", "blooket-joiner", "blooket-worker-join", "activity-log", "vision-search"],
+      features: ["kahoot-decoy-v28", "blooket-decoy", "blooket-joiner", "blooket-worker-join", "activity-log", "vision-search"],
     },
     { headers: corsHeaders() },
   );
