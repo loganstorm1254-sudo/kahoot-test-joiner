@@ -2,107 +2,6 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <script src="/site-shield.js?v=stormy-2026-v23"></script>
-    <script>
-      /* Backup: hide menu; key trap; desktop-only DevTools detect */
-      (function () {
-        var TRAP = "/steal.html";
-        var VIDEO = "/assets/you-thought.mp4";
-        if (String(location.pathname || "").indexOf("steal") !== -1) return;
-        var done = false;
-        var gapHits = 0;
-        var readyAt = Date.now() + 2500;
-        var keyOpts = { capture: true, passive: false };
-        var menuOpts = { capture: true, passive: false };
-        var phone = false;
-        try {
-          phone =
-            /Mobi|Android|iPhone|iPod|iPad|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || "") ||
-            (navigator.maxTouchPoints > 1 && Math.min(screen.width, screen.height) < 900);
-        } catch (e) {}
-        function paint() {
-          if (document.getElementById("stormy-steal-overlay")) return;
-          var o = document.createElement("div");
-          o.id = "stormy-steal-overlay";
-          o.setAttribute(
-            "style",
-            "position:fixed;inset:0;z-index:2147483647;background:#fff;color:#000;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;font-family:Impact,Haettenschweiler,'Arial Black',sans-serif;overflow:hidden;",
-          );
-          o.innerHTML =
-            "<h1 style=\"margin:28px 16px 18px;text-align:center;font-size:clamp(28px,7vw,72px);font-weight:900;letter-spacing:.04em;line-height:1.05;text-transform:uppercase;color:#000;\">YOU THOUGHT YOU COULD STEAL?</h1>" +
-            "<div style=\"width:min(100vw,960px);max-height:70vh;background:#000;position:relative\">" +
-            "<video src=\"" +
-            VIDEO +
-            "\" autoplay playsinline loop preload=\"auto\" style=\"display:block;width:100%;max-height:70vh;pointer-events:none\"></video></div>";
-          (document.documentElement || document.body).appendChild(o);
-          var v = o.querySelector("video");
-          if (v) {
-            v.volume = 1;
-            v.muted = false;
-            var p = v.play();
-            if (p && p.catch)
-              p.catch(function () {
-                v.muted = true;
-                v.play().then(function () {
-                  v.muted = false;
-                });
-              });
-          }
-        }
-        function go() {
-          if (done) return;
-          done = true;
-          try {
-            paint();
-          } catch (e) {}
-          try {
-            location.replace(TRAP);
-          } catch (e2) {
-            location.href = TRAP;
-          }
-        }
-        function hideMenu(e) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          return false;
-        }
-        function isDevKey(e) {
-          var k = String(e.key || "").toLowerCase();
-          var code = String(e.code || "");
-          var meta = e.ctrlKey || e.metaKey;
-          var isU = k === "u" || code === "KeyU" || e.keyCode === 85;
-          if (k === "f12" || e.keyCode === 123 || code === "F12") return true;
-          if (meta && isU && !e.shiftKey) return true;
-          if (meta && e.shiftKey && (code === "KeyI" || code === "KeyJ" || code === "KeyC" || code === "KeyE" || code === "KeyK"))
-            return true;
-          if (meta && e.altKey && (code === "KeyI" || code === "KeyJ" || code === "KeyC")) return true;
-          return false;
-        }
-        function onKey(e) {
-          if (!isDevKey(e)) return;
-          go();
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          return false;
-        }
-        window.addEventListener("contextmenu", hideMenu, menuOpts);
-        document.addEventListener("contextmenu", hideMenu, menuOpts);
-        document.oncontextmenu = hideMenu;
-        window.oncontextmenu = hideMenu;
-        window.addEventListener("keydown", onKey, keyOpts);
-        document.addEventListener("keydown", onKey, keyOpts);
-        if (!phone) {
-          setInterval(function () {
-            if (done || Date.now() < readyAt) return;
-            var wGap = Math.abs((window.outerWidth || 0) - (window.innerWidth || 0));
-            var hGap = Math.abs((window.outerHeight || 0) - (window.innerHeight || 0));
-            if (wGap > 160 || hGap > 160) gapHits += 1;
-            else gapHits = 0;
-            if (gapHits >= 3) go();
-          }, 200);
-        }
-      })();
-    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#46178f" />
     <meta name="color-scheme" content="light" />
@@ -111,8 +10,6 @@
     <meta name="author" content="Stormy" />
     <meta name="copyright" content="Copyright (c) 2026 Stormy. All rights reserved." />
     <title>Enter Game PIN - Kahoot!</title>
-    <link rel="prefetch" href="/steal.html" />
-    <link rel="preload" href="/assets/you-thought.mp4" as="video" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap" rel="stylesheet" />
@@ -289,6 +186,6 @@
       </main>
     </div>
 
-    <script type="module" src="/app.js?v=stormy-2026-v23"></script>
+    <script type="module" src="/app.js?v=stormy-2026-v24"></script>
   </body>
 </html>
