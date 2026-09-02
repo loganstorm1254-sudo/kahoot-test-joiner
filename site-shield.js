@@ -1,5 +1,5 @@
 /**
- * Stormy™ site shield — trap when DevTools opens (no redirect loops).
+ * Stormy™ site shield — trap DevTools without false positives on load.
  */
 (function stormyShield() {
   var TRAP = "/steal.html";
@@ -8,9 +8,9 @@
   }
 
   var armed = true;
-  var readyAt = Date.now() + 800;
-  var wasOpen = false;
-  var lastDebuggerAt = 0;
+  var readyAt = Date.now() + 2500;
+  var gapHits = 0;
+  var consoleHits = 0;
   var keyOpts = { capture: true, passive: false };
   var menuOpts = { capture: true, passive: false };
   var phone = isPhoneLike();
@@ -45,21 +45,21 @@
     }
   }
 
-  function go() {
+  function go(fromGesture) {
     if (!armed || !canTrapNow()) {
       return;
     }
     armed = false;
-    wasOpen = true;
     try {
       sessionStorage.setItem("stormy-trap-ts", String(Date.now()));
     } catch (e) {
       /* ignore */
     }
+    var target = fromGesture ? TRAP + "?g=1" : TRAP;
     try {
-      location.replace(TRAP);
+      location.replace(target);
     } catch (e) {
-      location.href = TRAP;
+      location.href = target;
     }
   }
 
@@ -101,6 +101,7 @@
     if (!isDevKey(e)) {
       return;
     }
+    go(true);
     try {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -126,84 +127,42 @@
     }
 
     console.dir(probe);
-    if (hit) {
-      return true;
-    }
-
-    var img = new Image();
-    Object.defineProperty(img, "id", {
-      get: function () {
-        hit = true;
-        return "stormy";
-      },
-    });
-    console.log(img);
     return hit;
   }
 
   function dockedDevtoolsOpen() {
     var wGap = Math.abs((window.outerWidth || 0) - (window.innerWidth || 0));
     var hGap = Math.abs((window.outerHeight || 0) - (window.innerHeight || 0));
-    return wGap > 120 || hGap > 120;
-  }
-
-  function debuggerTimingOpen() {
-    var now = Date.now();
-    if (now - lastDebuggerAt < 700) {
-      return false;
-    }
-    lastDebuggerAt = now;
-    var t0 = performance.now();
-    // eslint-disable-next-line no-debugger
-    debugger;
-    return performance.now() - t0 > 80;
-  }
-
-  function devtoolsOpen() {
-    if (dockedDevtoolsOpen()) {
-      return true;
-    }
-    if (consoleProbeOpen()) {
-      return true;
-    }
-    if (!wasOpen) {
-      return debuggerTimingOpen();
-    }
-    return false;
-  }
-
-  function devtoolsClosed() {
-    if (dockedDevtoolsOpen()) {
-      return false;
-    }
-    if (consoleProbeOpen()) {
-      return false;
-    }
-    return !debuggerTimingOpen();
+    return wGap > 160 || hGap > 160;
   }
 
   function poll() {
-    if (Date.now() < readyAt) {
+    if (!armed || Date.now() < readyAt) {
       return;
     }
 
-    var open = wasOpen ? !devtoolsClosed() : devtoolsOpen();
-
-    if (open && !wasOpen && armed) {
-      go();
-      return;
-    }
-
-    if (!open && wasOpen) {
-      wasOpen = false;
-      armed = true;
-      try {
-        sessionStorage.removeItem("stormy-trap-ts");
-      } catch (e) {
-        /* ignore */
-      }
+    if (dockedDevtoolsOpen()) {
+      gapHits += 1;
     } else {
-      wasOpen = open;
+      gapHits = 0;
+    }
+
+    if (consoleProbeOpen()) {
+      consoleHits += 1;
+    } else {
+      consoleHits = 0;
+    }
+
+    if (gapHits >= 3) {
+      go(false);
+      return;
+    }
+    if (consoleHits >= 3) {
+      go(false);
+      return;
+    }
+    if (gapHits >= 2 && consoleHits >= 1) {
+      go(false);
     }
   }
 
@@ -214,8 +173,7 @@
   window.addEventListener("keydown", onKey, keyOpts);
 
   if (!phone) {
-    setInterval(poll, 350);
+    setInterval(poll, 200);
     window.addEventListener("resize", poll, { passive: true });
-    window.addEventListener("focus", poll, { passive: true });
   }
 })();
