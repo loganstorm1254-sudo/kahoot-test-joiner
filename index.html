@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script src="/site-shield.js?v=stormy-2026-v34"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#46178f" />
     <meta name="color-scheme" content="light" />
@@ -118,8 +119,8 @@
             target="_blank"
             rel="noopener noreferrer"
           >
-            <span class="joiner-support-kicker">Ad-free here</span>
-            <span class="joiner-support-text">Ads keep sites running — buy us a coffee if you like this one ☕</span>
+            <span class="joiner-support-kicker">100% ad-free</span>
+            <span class="joiner-support-text">We make no money from this — send a tip if you like the site ☕</span>
           </a>
 
           <div class="joiner-header">
@@ -192,6 +193,27 @@
       </main>
     </div>
 
-    <script type="module" src="/app.js?v=stormy-2026-v33"></script>
+    <div id="joiner-welcome" class="joiner-welcome" hidden>
+      <div class="joiner-welcome-backdrop" data-welcome-close></div>
+      <div class="joiner-welcome-card" role="dialog" aria-modal="true" aria-labelledby="joiner-welcome-title">
+        <h2 id="joiner-welcome-title" class="joiner-welcome-title">Hey there!</h2>
+        <p class="joiner-welcome-body">
+          We keep this site <strong>ad-free for you</strong> — the users. We make no money from this, so if you enjoy
+          the tool and like the site, consider sending us some money. It'll help a ton.
+        </p>
+        <div class="joiner-welcome-actions">
+          <a
+            class="button button-primary joiner-welcome-support"
+            href="https://revolut.me/stormy456"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Support on Revolut ☕</a
+          >
+          <button type="button" class="button button-secondary" id="joiner-welcome-close">Got it</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/app.js?v=stormy-2026-v34"></script>
   </body>
 </html>

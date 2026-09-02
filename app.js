@@ -762,6 +762,44 @@ function resetQuickExitBuffer() {
   }
 }
 
+function closeJoinerWelcome({ persist = true } = {}) {
+  if (!joinerWelcomeEl) {
+    return;
+  }
+  joinerWelcomeEl.hidden = true;
+  if (persist) {
+    try {
+      localStorage.setItem(JOINER_WELCOME_KEY, "1");
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function maybeShowJoinerWelcome() {
+  if (!joinerWelcomeEl) {
+    return;
+  }
+  try {
+    if (localStorage.getItem(JOINER_WELCOME_KEY) === "1") {
+      return;
+    }
+  } catch {
+    // ignore
+  }
+  joinerWelcomeEl.hidden = false;
+}
+
+function initJoinerWelcome() {
+  if (!joinerWelcomeEl) {
+    return;
+  }
+  joinerWelcomeCloseBtn?.addEventListener("click", () => closeJoinerWelcome());
+  joinerWelcomeEl.querySelectorAll("[data-welcome-close]").forEach((node) => {
+    node.addEventListener("click", () => closeJoinerWelcome());
+  });
+}
+
 function setActiveView(viewName) {
   activeView = viewName;
   showingJoiner = viewName === VIEW.KAHOOT_JOINER;
@@ -792,6 +830,10 @@ function setActiveView(viewName) {
   };
   document.documentElement.style.background = backgrounds[viewName] || "#2f1d5c";
   resetQuickExitBuffer();
+
+  if (viewName === VIEW.KAHOOT_JOINER) {
+    maybeShowJoinerWelcome();
+  }
 }
 
 function setView(showJoiner) {
@@ -945,6 +987,7 @@ function initShell() {
 function boot() {
   try {
     initShell();
+    initJoinerWelcome();
     if (countSlider && countInput) {
       setPlayerCount(1);
     }

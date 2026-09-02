@@ -486,6 +486,63 @@ button {
   font-weight: 600;
 }
 
+.joiner-welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.joiner-welcome[hidden] {
+  display: none !important;
+}
+
+.joiner-welcome-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 10, 30, 0.72);
+}
+
+.joiner-welcome-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 480px);
+  padding: 24px 22px 20px;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.joiner-welcome-title {
+  margin: 0 0 12px;
+  font-size: 26px;
+  font-weight: 800;
+  color: #222;
+}
+
+.joiner-welcome-body {
+  margin: 0 0 18px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #444;
+  font-weight: 600;
+}
+
+.joiner-welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.joiner-welcome-support {
+  text-decoration: none;
+  text-align: center;
+}
+
 .joiner-header {
   margin-bottom: 8px;
   padding-right: min(230px, 44vw);
