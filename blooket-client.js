@@ -1,5 +1,5 @@
-import { encryptBlooketPayload, parseBuildConfigFromSource } from "./blooket-crypto.js";
-import { normalizeBlooketGameId } from "./blooket-shared.js";
+import { encryptBlooketPayload } from "./blooket-crypto.js";
+import { BLOOKET_JOIN_WORKER_URL, normalizeBlooketGameId } from "./blooket-shared.js";
 
 const BLOOKET_JOIN_URL = "https://fb.blooket.com/c/firebase/join";
 const BLOOKET_PLAY_ORIGIN = "https://play.blooket.com";
@@ -66,23 +66,13 @@ function sleep(ms) {
 
 async function loadBlooketBuildConfig() {
   try {
-    const pageResponse = await fetch(`${BLOOKET_PLAY_ORIGIN}/play`, { credentials: "include" });
-    if (pageResponse.ok) {
-      const html = await pageResponse.text();
-      const scriptPaths = [...html.matchAll(/src="(\/assets\/[^"]+\.js)"/g)].map((match) => match[1]);
-      for (const scriptPath of scriptPaths.slice(0, 12)) {
-        const scriptResponse = await fetch(`${BLOOKET_PLAY_ORIGIN}${scriptPath}`, { credentials: "omit" });
-        if (!scriptResponse.ok) {
-          continue;
-        }
-        const config = parseBuildConfigFromSource(await scriptResponse.text());
-        if (config) {
-          return config;
-        }
-      }
+    const workerResponse = await fetch(BLOOKET_JOIN_WORKER_URL, { method: "GET" });
+    const workerData = await workerResponse.json().catch(() => ({}));
+    if (workerResponse.ok && workerData.buildId && workerData.secret) {
+      return workerData;
     }
   } catch {
-    // Fall back to the server build endpoint.
+    // Fall back to the Vercel build route.
   }
 
   const response = await fetch("/api/blooket-build");
@@ -91,6 +81,31 @@ async function loadBlooketBuildConfig() {
     throw new Error(data.error || "Could not load Blooket build config.");
   }
   return data;
+}
+
+async function joinBlooketPlain(gameId, name) {
+  const response = await fetch(BLOOKET_JOIN_URL, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: String(gameId), name: String(name) }),
+  });
+  return parseJoinResponse(response);
+}
+
+async function joinBlooketEncrypted(gameId, name, buildConfig) {
+  const payload = { id: String(gameId), name: String(name) };
+  const body = await encryptBlooketPayload(payload, buildConfig.secret);
+  const response = await fetch(BLOOKET_JOIN_URL, {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Blooket-Build": buildConfig.buildId,
+    },
+    body,
+  });
+  return parseJoinResponse(response);
 }
 
 async function parseJoinResponse(response) {
@@ -109,40 +124,30 @@ async function parseJoinResponse(response) {
   return data;
 }
 
-async function joinBlooketFromBrowser(gameId, name, buildConfig) {
-  const payload = { id: String(gameId), name: String(name) };
-
-  let response = await fetch(BLOOKET_JOIN_URL, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  let joinData = await parseJoinResponse(response);
+async function joinBlooketFromBrowser(gameId, name, buildConfig = null) {
+  let joinData = await joinBlooketPlain(gameId, name);
   if (!joinData.success) {
-    const body = await encryptBlooketPayload(payload, buildConfig.secret);
-    response = await fetch(BLOOKET_JOIN_URL, {
-      method: "PUT",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Blooket-Build": buildConfig.buildId,
-      },
-      body,
-    });
-    joinData = await parseJoinResponse(response);
+    const config = buildConfig || (await loadBlooketBuildConfig());
+    joinData = await joinBlooketEncrypted(gameId, name, config);
   }
-
   return joinData;
 }
 
 async function requestBlooketJoinsFromBrowser(gameId, names) {
-  const buildConfig = await loadBlooketBuildConfig();
+  let buildConfig = null;
   const joins = [];
 
   for (const name of names) {
-    const joinData = await joinBlooketFromBrowser(gameId, name, buildConfig);
+    let joinData = await joinBlooketPlain(gameId, name);
+    if (!joinData.success) {
+      try {
+        buildConfig ||= await loadBlooketBuildConfig();
+        joinData = await joinBlooketEncrypted(gameId, name, buildConfig);
+      } catch {
+        // Keep the plain-join error if encrypted fallback cannot run.
+      }
+    }
+
     joins.push({ name, ...joinData });
     await sleep(120);
   }

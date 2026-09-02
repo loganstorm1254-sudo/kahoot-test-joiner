@@ -1,4 +1,5 @@
 import { parseBuildConfigFromSource } from "../lib/blooket-crypto.js";
+import { BLOOKET_JOIN_WORKER_URL } from "../blooket-shared.js";
 
 const PLAY_ORIGIN = "https://play.blooket.com";
 const USER_AGENT =
@@ -26,6 +27,16 @@ export async function OPTIONS() {
 }
 
 export async function GET() {
+  try {
+    const workerResponse = await fetch(BLOOKET_JOIN_WORKER_URL, { method: "GET" });
+    const workerData = await workerResponse.json().catch(() => ({}));
+    if (workerResponse.ok && workerData.buildId && workerData.secret) {
+      return Response.json(workerData, { headers: corsHeaders() });
+    }
+  } catch {
+    // Fall back to direct scrape.
+  }
+
   try {
     const playResponse = await fetch(`${PLAY_ORIGIN}/play`, {
       headers: requestHeaders(),

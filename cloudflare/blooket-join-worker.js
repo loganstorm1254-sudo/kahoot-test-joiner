@@ -212,6 +212,25 @@ export default {
       return new Response(null, { headers: corsHeaders() });
     }
 
+    if (request.method === "GET") {
+      try {
+        const cookies = await warmSession("");
+        const buildConfig = await scrapeBuildConfig(cookies);
+        if (!buildConfig) {
+          return Response.json(
+            { error: "Could not load Blooket build config." },
+            { status: 502, headers: corsHeaders() },
+          );
+        }
+        return Response.json(buildConfig, { headers: corsHeaders() });
+      } catch (error) {
+        return Response.json(
+          { error: error?.message || "Could not load Blooket build config." },
+          { status: 500, headers: corsHeaders() },
+        );
+      }
+    }
+
     if (request.method !== "PUT") {
       return Response.json({ success: false, msg: "Method not allowed." }, { status: 405, headers: corsHeaders() });
     }
