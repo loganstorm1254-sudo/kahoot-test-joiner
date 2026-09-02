@@ -1,9 +1,5 @@
 import { joinBlooketPlayers } from "../lib/blooket-join-backend.js";
 
-export const config = {
-  maxDuration: 60,
-};
-
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
