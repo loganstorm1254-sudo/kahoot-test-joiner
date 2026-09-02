@@ -1,1 +1,1 @@
-export const CLIENT_BUILD = "kahoot-decoy-v24";
+export const CLIENT_BUILD = "kahoot-decoy-v25";

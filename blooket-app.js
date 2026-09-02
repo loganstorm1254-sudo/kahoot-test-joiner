@@ -151,7 +151,7 @@ async function onJoin() {
 
   const nicknames = buildNicknames(count, baseName, useRandomNames);
   setConnected(true);
-  setStatus(`Joining ${count} player${count === 1 ? "" : "s"}… (first batch can take ~30s)`);
+  setStatus(`Joining ${count} player${count === 1 ? "" : "s"}… (first join can take ~30s)`);
   logActivity(`Starting Blooket batch: ${count} player${count === 1 ? "" : "s"}, game ${gameId}`);
 
   try {
@@ -166,6 +166,12 @@ async function onJoin() {
     for (const entry of batch.joins) {
       if (activeSession !== session) {
         return;
+      }
+
+      if (!entry.success) {
+        failedCount += 1;
+        logActivity(entry.msg || "Could not join that game.", { source: entry.name, level: "error" });
+        continue;
       }
 
       const joiner = new BlooketJoiner();
@@ -195,9 +201,6 @@ async function onJoin() {
 
       if (ok) {
         joiners.push(joiner);
-      } else if (!entry.success) {
-        failedCount += 1;
-        logActivity(entry.msg || "Could not join that game.", { source: entry.name, level: "error" });
       }
     }
 
