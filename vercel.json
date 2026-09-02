@@ -77,7 +77,7 @@
       ]
     },
     {
-      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|stormy-client|site-fetch|stormy-token|version|ads|ads-config)\\.js",
+      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|stormy-client|site-fetch|stormy-token|version)\\.js",
       "headers": [
         {
           "key": "Cache-Control",
