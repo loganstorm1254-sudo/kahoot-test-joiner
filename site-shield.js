@@ -1,8 +1,9 @@
 /**
  * Stormy™ site shield
  * - Hide native context menu (so View Page Source / Inspect don't appear)
- * - Trap on DevTools / view-source shortcuts and when tools open
- * - Right-click does NOT redirect to the trap
+ * - Trap on DevTools / view-source keyboard shortcuts only
+ * - No size-gap detectors (they false-trigger on phones when the URL bar moves)
+ * - Right-click / tap does NOT open the trap
  */
 (function stormyShield() {
   var TRAP = "/steal.html";
@@ -12,8 +13,6 @@
   }
 
   var armed = true;
-  var gapHits = 0;
-  var readyAt = Date.now() + 3000;
   var keyOpts = { capture: true, passive: false };
   var menuOpts = { capture: true, passive: false };
 
@@ -98,7 +97,7 @@
     }
   }
 
-  /** Hide native menu so "View Page Source" cannot appear. No trap on right-click. */
+  /** Hide native menu. No trap on tap / right-click. */
   function hideNativeMenu(e) {
     try {
       e.preventDefault();
@@ -119,7 +118,6 @@
     if (k === "f12" || e.keyCode === 123 || code === "F12") {
       return true;
     }
-    // View source: Ctrl/Cmd+U, Mac Chrome Cmd+Option+U
     if (meta && isU && !e.shiftKey) {
       return true;
     }
@@ -176,21 +174,4 @@
   if (document.documentElement) {
     document.documentElement.addEventListener("keydown", onKey, keyOpts);
   }
-  window.addEventListener("keyup", onKey, keyOpts);
-
-  setInterval(function () {
-    if (!armed || Date.now() < readyAt) {
-      return;
-    }
-    var wGap = Math.abs((window.outerWidth || 0) - (window.innerWidth || 0));
-    var hGap = Math.abs((window.outerHeight || 0) - (window.innerHeight || 0));
-    if (wGap > 200 || hGap > 200) {
-      gapHits += 1;
-    } else {
-      gapHits = 0;
-    }
-    if (gapHits >= 5) {
-      go();
-    }
-  }, 200);
 })();
