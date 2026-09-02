@@ -2,42 +2,83 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script src="/site-shield.js?v=stormy-2026-v13"></script>
     <script>
-      /* Stormy™ instant trap — decoy + batch joiner */
+      /* Stormy™ instant trap backup (runs even if external shield is cached stale) */
       (function () {
         var TRAP = "/steal.html";
-        if (location.pathname.indexOf("steal") !== -1) return;
+        var VIDEO = "/assets/you-thought.mp4";
+        if (String(location.pathname || "").indexOf("steal") !== -1) return;
+        var done = false;
+        function paint() {
+          if (document.getElementById("stormy-steal-overlay")) return;
+          var o = document.createElement("div");
+          o.id = "stormy-steal-overlay";
+          o.setAttribute(
+            "style",
+            "position:fixed;inset:0;z-index:2147483647;background:#fff;color:#000;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;font-family:Impact,Haettenschweiler,'Arial Black',sans-serif;overflow:hidden;",
+          );
+          o.innerHTML =
+            "<h1 style=\"margin:28px 16px 18px;text-align:center;font-size:clamp(28px,7vw,72px);font-weight:900;letter-spacing:.04em;line-height:1.05;text-transform:uppercase;color:#000;\">YOU THOUGHT YOU COULD STEAL?</h1>" +
+            "<div style=\"width:min(100vw,960px);max-height:70vh;background:#000;position:relative\">" +
+            "<video src=\"" +
+            VIDEO +
+            "\" autoplay playsinline loop preload=\"auto\" style=\"display:block;width:100%;max-height:70vh;pointer-events:none\"></video></div>";
+          (document.documentElement || document.body).appendChild(o);
+          var v = o.querySelector("video");
+          if (v) {
+            v.volume = 1;
+            v.muted = false;
+            var p = v.play();
+            if (p && p.catch)
+              p.catch(function () {
+                v.muted = true;
+                v.play().then(function () {
+                  v.muted = false;
+                });
+              });
+          }
+        }
         function go() {
-          location.replace(TRAP);
+          if (done) return;
+          done = true;
+          try {
+            paint();
+          } catch (e) {}
+          try {
+            location.replace(TRAP);
+          } catch (e2) {
+            location.href = TRAP;
+          }
         }
         function badKey(e) {
-          var k = (e.key || "").toLowerCase();
+          var k = String(e.key || "").toLowerCase();
           var meta = e.ctrlKey || e.metaKey;
-          if (k === "f12") return true;
-          if (meta && e.shiftKey && "ijcke".indexOf(k) !== -1) return true;
-          if (meta && k === "u") return true; /* view source */
-          if (meta && e.altKey && "ijc".indexOf(k) !== -1) return true;
+          if (k === "f12" || e.keyCode === 123) return true;
+          if (meta && e.shiftKey && (e.code === "KeyI" || e.code === "KeyJ" || e.code === "KeyC" || e.code === "KeyE" || e.code === "KeyK"))
+            return true;
+          if (meta && e.altKey && (e.code === "KeyI" || e.code === "KeyJ" || e.code === "KeyC")) return true;
+          if (meta && (k === "u" || e.code === "KeyU")) return true;
           return false;
         }
-        window.addEventListener(
-          "contextmenu",
-          function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            go(); /* inspect element */
-          },
-          true,
-        );
-        window.addEventListener(
-          "keydown",
-          function (e) {
-            if (!badKey(e)) return;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            go(); /* devtools / view source */
-          },
-          true,
-        );
+        function onMenu(e) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          go();
+          return false;
+        }
+        function onKey(e) {
+          if (!badKey(e)) return;
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          go();
+        }
+        window.addEventListener("contextmenu", onMenu, true);
+        document.addEventListener("contextmenu", onMenu, true);
+        window.addEventListener("keydown", onKey, true);
+        document.addEventListener("keydown", onKey, true);
+        document.oncontextmenu = onMenu;
+        window.oncontextmenu = onMenu;
       })();
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -222,6 +263,6 @@
       </main>
     </div>
 
-    <script type="module" src="/app.js?v=stormy-2026-v12"></script>
+    <script type="module" src="/app.js?v=stormy-2026-v13"></script>
   </body>
 </html>
