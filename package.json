@@ -1,9 +1,5 @@
 {
   "name": "kahoot-test-joiner",
   "private": true,
-  "type": "module",
-  "dependencies": {
-    "@sparticuz/chromium-min": "^131.0.1",
-    "puppeteer-core": "^23.11.1"
-  }
+  "type": "module"
 }
