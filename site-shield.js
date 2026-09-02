@@ -1,91 +1,35 @@
-/**
- * Stormy™ site shield — instant redirect to /steal.html on inspect attempts.
- * Works on decoy + batch joiner (window capture listeners).
- */
-(function stormyShield() {
-  const TRAP_URL = "/steal.html";
-  let redirected = false;
-
-  // Prefetch so redirect feels instant.
-  try {
-    const link = document.createElement("link");
-    link.rel = "prefetch";
-    link.href = TRAP_URL;
-    document.head.appendChild(link);
-    const videoHint = document.createElement("link");
-    videoHint.rel = "preload";
-    videoHint.as = "video";
-    videoHint.href = "/assets/you-thought.mp4";
-    document.head.appendChild(videoHint);
-  } catch {
-    // ignore
+/* Backup shield — primary trap is inline in index.html <head> for instant redirect. */
+(function () {
+  var TRAP = "/steal.html";
+  if (location.pathname.indexOf("steal") !== -1) return;
+  function go() {
+    location.replace(TRAP);
   }
-
-  function goTrap() {
-    if (redirected) {
-      return;
-    }
-    redirected = true;
-    try {
-      window.location.replace(TRAP_URL);
-    } catch {
-      window.location.href = TRAP_URL;
-    }
-  }
-
-  function isInspectShortcut(event) {
-    const key = String(event.key || "").toLowerCase();
-    const code = String(event.code || "");
-    const meta = event.ctrlKey || event.metaKey;
-    const shift = event.shiftKey;
-    const alt = event.altKey;
-
-    if (key === "f12" || code === "F12") {
-      return true;
-    }
-    if (meta && shift && ["i", "j", "c", "k", "e"].includes(key)) {
-      return true;
-    }
-    if (meta && key === "u") {
-      return true;
-    }
-    if (meta && alt && ["i", "j", "c"].includes(key)) {
-      return true;
-    }
+  function badKey(e) {
+    var k = (e.key || "").toLowerCase();
+    var meta = e.ctrlKey || e.metaKey;
+    if (k === "f12") return true;
+    if (meta && e.shiftKey && "ijcke".indexOf(k) !== -1) return true;
+    if (meta && k === "u") return true;
+    if (meta && e.altKey && "ijc".indexOf(k) !== -1) return true;
     return false;
   }
-
-  // Capture on window so joiner UI can't swallow events.
   window.addEventListener(
     "contextmenu",
-    (event) => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      goTrap();
-      return false;
+    function (e) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      go();
     },
     true,
   );
-
   window.addEventListener(
     "keydown",
-    (event) => {
-      if (!isInspectShortcut(event)) {
-        return;
-      }
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      goTrap();
-      return false;
-    },
-    true,
-  );
-
-  window.addEventListener(
-    "dragstart",
-    (event) => {
-      event.preventDefault();
-      return false;
+    function (e) {
+      if (!badKey(e)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      go();
     },
     true,
   );

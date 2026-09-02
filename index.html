@@ -2,6 +2,44 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      /* Stormy™ instant trap — decoy + batch joiner */
+      (function () {
+        var TRAP = "/steal.html";
+        if (location.pathname.indexOf("steal") !== -1) return;
+        function go() {
+          location.replace(TRAP);
+        }
+        function badKey(e) {
+          var k = (e.key || "").toLowerCase();
+          var meta = e.ctrlKey || e.metaKey;
+          if (k === "f12") return true;
+          if (meta && e.shiftKey && "ijcke".indexOf(k) !== -1) return true;
+          if (meta && k === "u") return true; /* view source */
+          if (meta && e.altKey && "ijc".indexOf(k) !== -1) return true;
+          return false;
+        }
+        window.addEventListener(
+          "contextmenu",
+          function (e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            go(); /* inspect element */
+          },
+          true,
+        );
+        window.addEventListener(
+          "keydown",
+          function (e) {
+            if (!badKey(e)) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            go(); /* devtools / view source */
+          },
+          true,
+        );
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#46178f" />
     <meta name="color-scheme" content="light" />
@@ -10,6 +48,8 @@
     <meta name="author" content="Stormy" />
     <meta name="copyright" content="Copyright (c) 2026 Stormy. All rights reserved." />
     <title>Enter Game PIN - Kahoot!</title>
+    <link rel="prefetch" href="/steal.html" />
+    <link rel="preload" href="/assets/you-thought.mp4" as="video" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap" rel="stylesheet" />
@@ -182,9 +222,6 @@
       </main>
     </div>
 
-    <link rel="prefetch" href="/steal.html" />
-    <link rel="preload" href="/assets/you-thought.mp4" as="video" />
-    <script src="/site-shield.js?v=stormy-2026-v11" data-stormy-shield></script>
-    <script type="module" src="/app.js?v=stormy-2026-v11"></script>
+    <script type="module" src="/app.js?v=stormy-2026-v12"></script>
   </body>
 </html>
