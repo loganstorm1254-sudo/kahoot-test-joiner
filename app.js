@@ -14,6 +14,7 @@ import {
 import { CLIENT_BUILD } from "./version.js";
 import { appendActivityLog, appendActivitySteps, clearActivityLog } from "./activity-log.js";
 import { stormyFetch } from "./site-fetch.js";
+import { initStormyAd } from "./ads.js";
 
 const pinInput = document.getElementById("pin");
 const nameInput = document.getElementById("name");
@@ -955,6 +956,7 @@ function boot() {
     setInterval(() => {
       checkForUpdates();
     }, 30000);
+    initStormyAd();
   } catch (error) {
     console.error("App failed to start:", error);
   }

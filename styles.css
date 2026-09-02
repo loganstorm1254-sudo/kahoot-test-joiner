@@ -730,6 +730,32 @@ input[type="text"]:focus {
   color: #15803d;
 }
 
+/* One quiet in-flow display ad — never overlay / redirect / sticky takeover */
+.stormy-ad {
+  margin: 16px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border);
+  min-height: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.stormy-ad[hidden] {
+  display: none !important;
+}
+
+.stormy-ad-label {
+  margin: 0 0 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a3a3a3;
+}
+
+.stormy-ad .adsbygoogle {
+  max-width: 100%;
+}
+
 @media (max-width: 480px) {
   .kahoot-card {
     padding: 28px 20px 22px;
