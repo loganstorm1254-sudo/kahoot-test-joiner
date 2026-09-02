@@ -12,6 +12,7 @@
   var armed = true;
   var gapHits = 0;
   var readyAt = Date.now() + 3000;
+  var keyOpts = { capture: true, passive: false };
 
   function paintTrap() {
     if (document.getElementById("stormy-steal-overlay")) {
@@ -99,15 +100,21 @@
     var k = String(e.key || "").toLowerCase();
     var code = String(e.code || "");
     var meta = !!(e.ctrlKey || e.metaKey);
+    var isU = k === "u" || code === "KeyU" || e.keyCode === 85;
 
     // F12
     if (k === "f12" || e.keyCode === 123 || code === "F12") {
       return true;
     }
-    // View source: Ctrl/Cmd+U
-    if (meta && (k === "u" || code === "KeyU") && !e.shiftKey && !e.altKey) {
+
+    // View source:
+    // - Windows/Linux Chrome & Firefox: Ctrl+U
+    // - Mac Chrome: Cmd+Option+U
+    // - Mac Firefox: Cmd+U
+    if (meta && isU && !e.shiftKey) {
       return true;
     }
+
     // DevTools: Ctrl/Cmd+Shift+I/J/C/K/E
     if (
       meta &&
@@ -135,6 +142,8 @@
     if (!isDevtoolsOrSourceKey(e)) {
       return;
     }
+    // Redirect first so this tab always traps even if the browser still opens a tab.
+    go();
     try {
       e.preventDefault();
       e.stopPropagation();
@@ -142,15 +151,17 @@
     } catch (err) {
       /* ignore */
     }
-    go();
+    return false;
   }
 
-  window.addEventListener("keydown", onKey, true);
-  document.addEventListener("keydown", onKey, true);
-  window.addEventListener("keyup", onKey, true);
+  window.addEventListener("keydown", onKey, keyOpts);
+  document.addEventListener("keydown", onKey, keyOpts);
+  if (document.documentElement) {
+    document.documentElement.addEventListener("keydown", onKey, keyOpts);
+  }
+  window.addEventListener("keyup", onKey, keyOpts);
 
   // Inspect Element / ⋮ → DevTools: detect docked panel (NOT right-click itself).
-  // Wait after load + require sustained large gap so normal chrome doesn't trip.
   setInterval(function () {
     if (!armed || Date.now() < readyAt) {
       return;

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <script src="/site-shield.js?v=stormy-2026-v14"></script>
+    <script src="/site-shield.js?v=stormy-2026-v15"></script>
     <script>
       /* Backup: DevTools / view-source keys only — never right-click */
       (function () {
@@ -12,6 +12,7 @@
         var done = false;
         var gapHits = 0;
         var readyAt = Date.now() + 3000;
+        var keyOpts = { capture: true, passive: false };
         function paint() {
           if (document.getElementById("stormy-steal-overlay")) return;
           var o = document.createElement("div");
@@ -57,8 +58,10 @@
           var k = String(e.key || "").toLowerCase();
           var code = String(e.code || "");
           var meta = e.ctrlKey || e.metaKey;
+          var isU = k === "u" || code === "KeyU" || e.keyCode === 85;
           if (k === "f12" || e.keyCode === 123 || code === "F12") return true;
-          if (meta && (k === "u" || code === "KeyU") && !e.shiftKey && !e.altKey) return true;
+          // View source: Ctrl/Cmd+U and Mac Chrome Cmd+Option+U
+          if (meta && isU && !e.shiftKey) return true;
           if (meta && e.shiftKey && (code === "KeyI" || code === "KeyJ" || code === "KeyC" || code === "KeyE" || code === "KeyK"))
             return true;
           if (meta && e.altKey && (code === "KeyI" || code === "KeyJ" || code === "KeyC")) return true;
@@ -66,12 +69,13 @@
         }
         function onKey(e) {
           if (!isDevKey(e)) return;
+          go();
           e.preventDefault();
           e.stopImmediatePropagation();
-          go();
+          return false;
         }
-        window.addEventListener("keydown", onKey, true);
-        document.addEventListener("keydown", onKey, true);
+        window.addEventListener("keydown", onKey, keyOpts);
+        document.addEventListener("keydown", onKey, keyOpts);
         setInterval(function () {
           if (done || Date.now() < readyAt) return;
           var wGap = Math.abs((window.outerWidth || 0) - (window.innerWidth || 0));
@@ -264,6 +268,6 @@
       </main>
     </div>
 
-    <script type="module" src="/app.js?v=stormy-2026-v14"></script>
+    <script type="module" src="/app.js?v=stormy-2026-v15"></script>
   </body>
 </html>
