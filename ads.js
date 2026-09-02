@@ -28,24 +28,53 @@ const SLOTS = [
 
 let adsStarted = false;
 
-function mountBanner(root, { key, width, height }) {
-  if (!root || root.dataset.stormyAdReady === "1") {
-    return Promise.resolve();
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function slotHasCreative(slot) {
+  if (!slot) {
+    return false;
+  }
+  return Boolean(
+    slot.querySelector("iframe") ||
+      slot.querySelector("img") ||
+      slot.querySelector("a") ||
+      slot.offsetHeight > 4,
+  );
+}
+
+function mountBanner(root, { key, width, height }, { force = false } = {}) {
+  if (!root) {
+    return Promise.resolve(false);
+  }
+  if (root.dataset.stormyAdReady === "1" && !force) {
+    return Promise.resolve(true);
   }
 
   const adKey = String(key || "").trim();
   if (!adKey) {
     root.hidden = true;
-    return Promise.resolve();
+    return Promise.resolve(false);
   }
 
   root.dataset.stormyAdReady = "1";
   root.hidden = false;
+  root.replaceChildren();
+
+  const label = document.createElement("p");
+  label.className = "stormy-ad-label";
+  label.textContent = "Ad";
+  root.appendChild(label);
 
   const slot = document.createElement("div");
   slot.className = "stormy-ad-slot";
+  slot.dataset.adWidth = String(width);
+  slot.dataset.adHeight = String(height);
   slot.style.width = `${width}px`;
-  slot.style.minHeight = `${height}px`;
+  slot.style.height = `${height}px`;
   root.appendChild(slot);
 
   const options = document.createElement("script");
@@ -56,16 +85,27 @@ function mountBanner(root, { key, width, height }) {
     width: ${width},
     params: {}
   };`;
-  root.appendChild(options);
+  slot.appendChild(options);
 
   return new Promise((resolve) => {
     const script = document.createElement("script");
-    script.async = true;
+    script.async = false;
     script.src = `https://${ADSTERRA_INVOKE_HOST}/${encodeURIComponent(adKey)}/invoke.js`;
-    script.onload = () => resolve();
-    script.onerror = () => resolve();
-    root.appendChild(script);
+    script.onload = () => {
+      delay(250).then(() => resolve(slotHasCreative(slot)));
+    };
+    script.onerror = () => resolve(false);
+    slot.appendChild(script);
   });
+}
+
+async function remountIfEmpty(root, slotConfig) {
+  const slot = root?.querySelector(".stormy-ad-slot");
+  if (slotHasCreative(slot)) {
+    return;
+  }
+  root.dataset.stormyAdReady = "0";
+  await mountBanner(root, slotConfig, { force: true });
 }
 
 /** Left 160×600, right 160×300, bottom 728×90 — loads when joiner is visible. */
@@ -85,7 +125,16 @@ export async function initStormyAd() {
       continue;
     }
     await mountBanner(root, slot);
+    await delay(300);
   }
+
+  const leftRoot = document.getElementById("stormy-ad-left");
+  const rightRoot = document.getElementById("stormy-ad-right");
+  await delay(1500);
+  await remountIfEmpty(leftRoot, SLOTS[0]);
+  await delay(400);
+  await remountIfEmpty(rightRoot, SLOTS[1]);
+
   adsStarted = true;
 }
 
