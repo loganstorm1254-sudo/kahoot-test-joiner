@@ -1,7 +1,5 @@
 /**
- * Stormy™ site shield
- * - Block right-click (no trap on right-click)
- * - Trap on DevTools shortcuts + DevTools open (console/debugger probes — not screen size)
+ * Stormy™ site shield — fast DevTools trap, block right-click only.
  */
 (function stormyShield() {
   var TRAP = "/steal.html";
@@ -10,8 +8,7 @@
   }
 
   var armed = true;
-  var probeHits = 0;
-  var readyAt = Date.now() + 3000;
+  var readyAt = Date.now() + 500;
   var keyOpts = { capture: true, passive: false };
   var menuOpts = { capture: true, passive: false };
 
@@ -34,7 +31,6 @@
   function hideMenu(e) {
     try {
       e.preventDefault();
-      e.stopPropagation();
       e.stopImmediatePropagation();
     } catch (err) {
       /* ignore */
@@ -80,13 +76,13 @@
     return false;
   }
 
-  function devtoolsProbe() {
-    var opened = false;
+  function devtoolsOpen() {
+    var hit = false;
     var probe = document.createElement("div");
     Object.defineProperty(probe, "id", {
       get: function () {
-        opened = true;
-        return "stormy";
+        hit = true;
+        return "s";
       },
     });
     console.log("%c", probe);
@@ -95,14 +91,12 @@
     } catch (e) {
       /* ignore */
     }
-    if (opened) {
+    if (hit) {
       return true;
     }
-
-    var start = performance.now();
-    // DevTools pauses on debugger when open.
+    var t0 = performance.now();
     debugger; // eslint-disable-line no-debugger
-    return performance.now() - start > 90;
+    return performance.now() - t0 > 60;
   }
 
   window.addEventListener("contextmenu", hideMenu, menuOpts);
@@ -118,17 +112,12 @@
         return;
       }
       try {
-        if (devtoolsProbe()) {
-          probeHits += 1;
-        } else {
-          probeHits = 0;
+        if (devtoolsOpen()) {
+          go();
         }
       } catch (e) {
-        probeHits = 0;
+        /* ignore */
       }
-      if (probeHits >= 2) {
-        go();
-      }
-    }, 900);
+    }, 350);
   }
 })();
