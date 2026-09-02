@@ -744,6 +744,10 @@ let quickExitBuffer = "";
 let quickExitTimer = null;
 const QUICK_EXIT_SEQUENCE = "qw";
 const QUICK_EXIT_TIMEOUT_MS = 1200;
+const JOINER_WELCOME_KEY = "stormy-joiner-welcome-v1";
+
+const joinerWelcomeEl = document.getElementById("joiner-welcome");
+const joinerWelcomeCloseBtn = document.getElementById("joiner-welcome-close");
 
 function isTypingInField() {
   const element = document.activeElement;
