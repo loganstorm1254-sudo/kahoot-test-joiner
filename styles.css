@@ -783,22 +783,14 @@ input[type="text"]:focus {
   max-width: 160px !important;
 }
 
-.stormy-ad-side-tall {
+.stormy-ad-side-short .stormy-ad-slot {
   width: 160px;
+  height: 300px;
 }
 
 .stormy-ad-side-tall .stormy-ad-slot {
   width: 160px;
   height: 600px;
-}
-
-.stormy-ad-side-short {
-  width: 160px;
-}
-
-.stormy-ad-side-short .stormy-ad-slot {
-  width: 160px;
-  height: 300px;
 }
 
 .stormy-ad-side .stormy-ad-label {

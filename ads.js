@@ -16,7 +16,7 @@ const SLOTS = [
     id: "stormy-ad-right",
     key: ADSTERRA_KEY_RIGHT,
     width: 160,
-    height: 300,
+    height: 600,
   },
   {
     id: "stormy-ad",
@@ -108,7 +108,7 @@ async function remountIfEmpty(root, slotConfig) {
   await mountBanner(root, slotConfig, { force: true });
 }
 
-/** Left 160×600, right 160×300, bottom 728×90 — loads when joiner is visible. */
+/** Left 160×600, right 160×600, bottom 728×90 — loads when joiner is visible. */
 export async function initStormyAd() {
   const joiner = document.getElementById("view-joiner");
   if (!joiner || joiner.hidden) {
