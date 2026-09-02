@@ -1,11 +1,16 @@
 import {
+  deterministicChoice,
   getLearnedCorrectIndices,
+  getSharedSmartGuess,
   isTrustedQuizAnswers,
   lookupSearchAnswer,
   normalizePin,
   prefetchSearchAnswer,
   rememberCorrectChoices,
   resolveChoice,
+  setSharedSmartGuess,
+  smartGuessKey,
+  synthesizeChoiceLabels,
 } from "./quiz-answers.js";
 import { hasResolvedImages, resolveKahootImageUrl } from "./kahoot-images.js";
 
@@ -623,18 +628,53 @@ export class KahootJoiner {
   }
 
   getSearchLabels(entry) {
-    return (entry?.choiceLabels || []).map((label) => String(label || "").trim()).filter(Boolean);
+    const raw = (entry?.choiceLabels || []).map((label) => String(label || "").trim());
+    const filled = raw.filter(Boolean);
+    if (filled.length >= 2) {
+      return filled;
+    }
+    const count = Math.max(this.currentNumChoices || 0, raw.length, 4);
+    return synthesizeChoiceLabels(count, raw);
   }
 
   getSearchQuestion(entry, labels) {
-    const question = String(entry?.question || "").trim();
+    const question = String(entry?.question || this.liveQuizTitle || "").trim();
     if (question) {
       return question;
     }
     if (labels.length >= 2) {
-      return `Which answer is correct? Options: ${labels.join(", ")}`;
+      return `Kahoot quiz question. Here are the options:\n${labels
+        .map((label, index) => `${index + 1}. ${label}`)
+        .join("\n")}`;
     }
     return "";
+  }
+
+  async waitForSearchableQuestion(maxMs = 7000) {
+    const started = Date.now();
+    while (Date.now() - started < maxMs) {
+      const shared = this.getSharedQuizAnswers?.();
+      if (shared) {
+        this.applyQuizAnswers(shared);
+      }
+      const entry = this.getQuestionEntry();
+      const labels = this.getSearchLabels(entry);
+      const question = this.getSearchQuestion(entry, labels);
+      if (question && labels.length >= 2) {
+        return { entry, labels, question };
+      }
+      if (this.hasKnownAnswer() || this.hasLearnedAnswer()) {
+        return { entry, labels, question };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    const entry = this.getQuestionEntry();
+    const labels = this.getSearchLabels(entry);
+    return {
+      entry,
+      labels,
+      question: this.getSearchQuestion(entry, labels),
+    };
   }
 
   async ensureQuizDataBeforeAnswer() {
@@ -644,6 +684,7 @@ export class KahootJoiner {
     }
 
     if (!this.waitForQuizAnswers) {
+      await this.waitForSearchableQuestion(5000);
       await this.ensureQuizImagesLoaded();
       return this.quizAnswers;
     }
@@ -651,7 +692,7 @@ export class KahootJoiner {
     const loaded = await Promise.race([
       this.waitForQuizAnswers(),
       new Promise((resolve) => {
-        setTimeout(() => resolve(null), 4500);
+        setTimeout(() => resolve(null), 6500);
       }),
     ]);
 
@@ -659,6 +700,7 @@ export class KahootJoiner {
       this.applyQuizAnswers(loaded);
     }
 
+    await this.waitForSearchableQuestion(4500);
     await this.ensureQuizImagesLoaded();
     return loaded || this.quizAnswers;
   }
@@ -829,12 +871,10 @@ export class KahootJoiner {
           `Looking up image Q${this.getDisplayQuestionNumber()}: "${preview}" (${choiceImageCount || 1} image${choiceImageCount === 1 ? "" : "s"})`,
         );
       } else {
-        this.status(`Googling Q${this.getDisplayQuestionNumber()}: "${preview}"`);
+        this.status(`Stormy™ searching Q${this.getDisplayQuestionNumber()}: "${preview}"`);
       }
-    } else if (!entry && !this.hasKnownAnswer()) {
-      this.status(`Q${this.getDisplayQuestionNumber()}: waiting for quiz data…`);
-    } else if (entry && !hasResolvedImages(entry) && !this.hasKnownAnswer()) {
-      this.status(`Q${this.getDisplayQuestionNumber()}: no images yet — fetching quiz media…`);
+    } else if (!this.hasKnownAnswer()) {
+      this.status(`Q${this.getDisplayQuestionNumber()}: gathering question + options…`);
     }
 
     const { choice, mode, detail } = await this.buildSmartChoice(questionType, numChoices);
@@ -869,10 +909,16 @@ export class KahootJoiner {
   async buildSmartChoice(type, numChoices) {
     const quizIndex = this.getQuizLookupIndex();
     const blockIndex = this.currentQuestionIndex;
-    const entry = this.getQuestionEntry();
-    const labels = this.getSearchLabels(entry);
-    const searchQuestion = this.getSearchQuestion(entry, labels);
-    const searchOptions = this.getSearchOptions();
+    const waited = await this.waitForSearchableQuestion(3500);
+    const entry = waited.entry || this.getQuestionEntry();
+    const labels = waited.labels?.length >= 2 ? waited.labels : this.getSearchLabels(entry);
+    const searchQuestion =
+      waited.question || this.getSearchQuestion(entry, labels);
+    const searchOptions = {
+      ...this.getSearchOptions(),
+      timeoutMs: 14000,
+    };
+    const guessKey = smartGuessKey(this.pin, blockIndex, searchQuestion, labels);
 
     if (this.hasLearnedAnswer()) {
       return {
@@ -902,17 +948,32 @@ export class KahootJoiner {
       };
     }
 
+    const sharedGuess = getSharedSmartGuess(guessKey);
+    if (sharedGuess != null && sharedGuess >= 0 && sharedGuess < numChoices) {
+      return {
+        choice: type === "open_ended" || type === "word_cloud" ? labels[sharedGuess] || sharedGuess : sharedGuess,
+        mode: "smart guess",
+        detail: "shared with other bots",
+      };
+    }
+
     if (type === "open_ended" || type === "word_cloud") {
       if (searchQuestion) {
+        this.status(`Stormy™ searching Q${this.getDisplayQuestionNumber()}…`);
         const search = await lookupSearchAnswer(
           searchQuestion,
-          entry?.choiceLabels || labels,
+          entry?.choiceLabels?.filter(Boolean)?.length >= 2
+            ? entry.choiceLabels
+            : labels,
           searchOptions,
         );
         if (search?.textAnswer) {
+          if (search.choiceIndex != null) {
+            setSharedSmartGuess(guessKey, search.choiceIndex);
+          }
           return {
             choice: search.textAnswer,
-            mode: search.source === "vision" || search.source?.startsWith("stormy") ? "vision" : "google",
+            mode: search.smartGuess ? "smart guess" : search.source === "vision" ? "vision" : "search",
             detail: this.formatSearchDetail(search),
           };
         }
@@ -920,7 +981,7 @@ export class KahootJoiner {
 
       const textAnswers = this.quizAnswers?.answers?.[quizIndex]?.textAnswers;
       if (Array.isArray(textAnswers) && textAnswers.length > 0) {
-        return { choice: textAnswers[Math.floor(Math.random() * textAnswers.length)], mode: "known answer" };
+        return { choice: textAnswers[0], mode: "known answer" };
       }
 
       if (this.hasKnownAnswer()) {
@@ -930,25 +991,32 @@ export class KahootJoiner {
         };
       }
 
+      const fallback = labels[deterministicChoice(guessKey, labels.length)] || "idk";
       return {
-        choice: ["idk", "hello", "yes", "ok", "maybe", "hmm", "lol", "hi"][
-          Math.floor(Math.random() * 8)
-        ],
-        mode: "guess",
-        detail: searchQuestion ? "search failed" : "no question data",
+        choice: fallback,
+        mode: "smart guess",
+        detail: "stable fallback",
       };
     }
 
     if (searchQuestion && labels.length >= 2) {
+      this.status(
+        `Stormy™ searching Q${this.getDisplayQuestionNumber()}: "${searchQuestion.slice(0, 60)}${searchQuestion.length > 60 ? "…" : ""}"`,
+      );
       const search = await lookupSearchAnswer(
         searchQuestion,
-        entry?.choiceLabels || labels,
+        labels,
         searchOptions,
       );
       if (search?.choiceIndex != null && search.choiceIndex >= 0 && search.choiceIndex < numChoices) {
+        setSharedSmartGuess(guessKey, search.choiceIndex);
         return {
           choice: search.choiceIndex,
-          mode: search.source === "vision" || search.source?.startsWith("stormy") ? "vision" : "google",
+          mode: search.smartGuess
+            ? "smart guess"
+            : search.source === "vision" || search.source?.startsWith("stormy")
+              ? "vision"
+              : "search",
           detail: this.formatSearchDetail(search),
         };
       }
@@ -961,10 +1029,21 @@ export class KahootJoiner {
       };
     }
 
+    const again = getSharedSmartGuess(guessKey);
+    if (again != null && again >= 0 && again < numChoices) {
+      return {
+        choice: again,
+        mode: "smart guess",
+        detail: "shared with other bots",
+      };
+    }
+
+    const smartIndex = deterministicChoice(guessKey || searchQuestion || this.pin, numChoices);
+    setSharedSmartGuess(guessKey, smartIndex);
     return {
-      choice: resolveChoice(type, numChoices, quizIndex, this.quizAnswers, this.pin, blockIndex),
-      mode: "guess",
-      detail: searchQuestion ? "search failed" : "no quiz data",
+      choice: smartIndex,
+      mode: "smart guess",
+      detail: searchQuestion ? "search timed out — stable pick" : "no quiz text — stable pick",
     };
   }
 
@@ -1186,16 +1265,24 @@ export class KahootJoiner {
 
     if (messageId === 1 || messageId === 2 || messageId === 43) {
       const meta = extractLiveQuestionMeta(content);
-      if (meta.imageUrl || meta.question || meta.choiceLabels?.length) {
-        const existing = this.liveQuestionMeta.get(this.currentQuestionIndex) || {};
-        this.liveQuestionMeta.set(this.currentQuestionIndex, {
-          ...existing,
-          question: meta.question || existing.question || "",
-          imageUrl: meta.imageUrl || existing.imageUrl || "",
-          choiceLabels: meta.choiceLabels?.length ? meta.choiceLabels : existing.choiceLabels || [],
-          choiceImages: meta.choiceImages?.length ? meta.choiceImages : existing.choiceImages || [],
-        });
-      }
+      const existing = this.liveQuestionMeta.get(this.currentQuestionIndex) || {};
+      const mergedLabels = meta.choiceLabels?.some((label) => String(label || "").trim())
+        ? meta.choiceLabels
+        : existing.choiceLabels || [];
+      const labelCount = Math.max(
+        this.currentNumChoices || 0,
+        mergedLabels.length,
+        meta.choiceLabels?.length || 0,
+        4,
+      );
+      this.liveQuestionMeta.set(this.currentQuestionIndex, {
+        ...existing,
+        question: meta.question || existing.question || "",
+        imageUrl: meta.imageUrl || existing.imageUrl || "",
+        choiceLabels: synthesizeChoiceLabels(labelCount, mergedLabels),
+        choiceImages: meta.choiceImages?.length ? meta.choiceImages : existing.choiceImages || [],
+      });
+      this.prefetchSearchForCurrentQuestion();
     }
 
     if (messageId === 1) {
@@ -1254,16 +1341,11 @@ export class KahootJoiner {
     const numChoices = Math.max(this.currentNumChoices || 4, 1);
     const searchOptions = this.getSearchOptions();
     const hasImages = Boolean(searchOptions.imageUrl || searchOptions.choiceImages?.some(Boolean));
-    const needsData = !this.hasLearnedAnswer() && !this.hasKnownAnswer() && !this.canUseWebSearch();
     const answerDelay = this.hasLearnedAnswer() || this.hasTrustedPrefetchAnswer() || this.hasKnownAnswer()
-      ? 30 + Math.floor(Math.random() * 90)
-      : this.canUseWebSearch()
-        ? hasImages
-          ? 6200 + Math.floor(Math.random() * 2200)
-          : 3600 + Math.floor(Math.random() * 1400)
-        : needsData
-          ? 1800 + Math.floor(Math.random() * 1200)
-          : 30 + Math.floor(Math.random() * 90);
+      ? 40 + Math.floor(Math.random() * 100)
+      : hasImages
+        ? 2800 + Math.floor(Math.random() * 1200)
+        : 1600 + Math.floor(Math.random() * 900);
 
     this.clearAnswerTimers();
 
@@ -1287,7 +1369,7 @@ export class KahootJoiner {
         return;
       }
       this.submitAutoAnswer(runId, questionIndex, questionType, numChoices);
-    }, searchOptions.imageUrl ? 15000 : 12000);
+    }, 16000);
   }
 
   reportGameEnd(content) {

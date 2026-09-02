@@ -6,6 +6,57 @@ const cacheByTitle = new Map();
 const inflight = new Map();
 const searchCache = new Map();
 const searchInflight = new Map();
+const smartGuessCache = new Map();
+
+const KAHOOT_COLOR_LABELS = ["Red", "Blue", "Yellow", "Green", "Purple", "Cyan"];
+
+export function synthesizeChoiceLabels(numChoices, existing = []) {
+  const count = Math.max(Number(numChoices) || 0, existing?.length || 0, 2);
+  const labels = [];
+  for (let index = 0; index < count; index += 1) {
+    const existingLabel = String(existing?.[index] || "").trim();
+    if (existingLabel && !/^image choice \d+$/i.test(existingLabel)) {
+      labels.push(existingLabel);
+    } else if (existingLabel) {
+      labels.push(existingLabel);
+    } else {
+      labels.push(KAHOOT_COLOR_LABELS[index] || `Option ${index + 1}`);
+    }
+  }
+  return labels;
+}
+
+export function getSharedSmartGuess(key) {
+  return smartGuessCache.get(String(key || "")) ?? null;
+}
+
+export function setSharedSmartGuess(key, choiceIndex) {
+  if (key == null || choiceIndex == null || choiceIndex < 0) {
+    return;
+  }
+  smartGuessCache.set(String(key), choiceIndex);
+}
+
+export function smartGuessKey(pin, questionIndex, question, labels) {
+  return [
+    normalizePin(pin),
+    questionIndex ?? "",
+    normalizeTitle(question),
+    (labels || []).map((label) => normalizeTitle(label)).join("|"),
+  ].join("::");
+}
+
+/** Stable non-random fallback so every bot picks the same option. */
+export function deterministicChoice(seed, numChoices) {
+  const count = Math.max(Number(numChoices) || 1, 1);
+  const text = String(seed || "stormy");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash) % count;
+}
 
 export function normalizePin(pin) {
   return String(pin || "").replace(/\D/g, "");
@@ -248,18 +299,19 @@ export function lookupSearchAnswer(
       const choiceIndex = Number(data?.choiceIndex);
       const margin = Number(data?.margin) || 0;
       const source = data?.source || "stormy";
-      const minMargin =
-        source === "vision" || source === "stormy-ai" || source === "stormy-vision-inline"
-          ? 8
-          : hasImages
-            ? 2
-            : 4;
+      const acceptsSmartGuess =
+        data?.smartGuess === true ||
+        source === "smart-guess" ||
+        source === "vision" ||
+        source === "stormy-ai" ||
+        source === "stormy-vision-inline";
+      const minMargin = acceptsSmartGuess ? 0 : hasImages ? 1 : 2;
 
       if (
         !Number.isFinite(choiceIndex) ||
         choiceIndex < 0 ||
         choiceIndex >= labels.length ||
-        margin < minMargin
+        (!acceptsSmartGuess && margin < minMargin)
       ) {
         return {
           choiceIndex: null,
@@ -272,6 +324,7 @@ export function lookupSearchAnswer(
           usedImage: Boolean(data?.usedImage),
           steps: Array.isArray(data?.steps) ? data.steps : [],
           imageDescription: data?.imageDescription || "",
+          smartGuess: Boolean(data?.smartGuess),
         };
       }
       return {
@@ -285,6 +338,7 @@ export function lookupSearchAnswer(
         usedImage: Boolean(data?.usedImage),
         steps: Array.isArray(data?.steps) ? data.steps : [],
         imageDescription: data?.imageDescription || "",
+        smartGuess: Boolean(data?.smartGuess) || source === "smart-guess",
       };
     })().catch(() => null),
     new Promise((resolve) => {
@@ -333,7 +387,10 @@ export function resolveChoice(type, numChoices, quizQuestionIndex, quizData, pin
     answerEntry?.correctIndices || getLearnedCorrectIndices(pin, lookupIndex);
 
   if (!correctIndices?.length) {
-    return Math.floor(Math.random() * Math.max(numChoices, 1));
+    return deterministicChoice(
+      `${pin || ""}:${lookupIndex}:${quizData?.title || ""}:${quizQuestionIndex}`,
+      numChoices,
+    );
   }
 
   if (normalizedType === "multiple_select_quiz" || normalizedType === "multiple_select_poll") {

@@ -1042,7 +1042,7 @@ async function resolveStormySearch(
   }
 
   let bestIndex = -1;
-  let bestScore = 0;
+  let bestScore = -1;
   for (let index = 0; index < scores.length; index += 1) {
     if (scores[index] > bestScore) {
       bestScore = scores[index];
@@ -1050,22 +1050,27 @@ async function resolveStormySearch(
     }
   }
 
+  if (bestIndex < 0) {
+    bestIndex = 0;
+    bestScore = 0;
+  }
+
   const sortedScores = [...scores].sort((left, right) => right - left);
-  const margin = sortedScores[0] - (sortedScores[1] || 0);
+  const margin = Math.max(0, (sortedScores[0] || 0) - (sortedScores[1] || 0));
   const scoreSummary = choices
     .map((choice, index) => `${choice}=${Math.round(scores[index])}`)
     .join(", ");
   steps.push({ message: `Scores: ${scoreSummary}`, level: "info" });
 
-  const minScore = usedImage || vision.usedVision ? 4 : 8;
-  const minMargin = usedImage || vision.usedVision ? 3 : 6;
+  const minScore = usedImage || vision.usedVision ? 3 : 5;
+  const minMargin = usedImage || vision.usedVision ? 1 : 2;
 
   const evidenceCorpus = [
     vision.visionCorpus,
     ...choices.map((choice, index) => `${choice}: score ${Math.round(scores[index])}`),
   ].join("\n");
 
-  if (bestIndex < 0 || bestScore < minScore || margin < minMargin) {
+  if (bestScore < minScore || margin < minMargin) {
     const aiPick = await stormyReasonPick(
       normalizedQuestion,
       choices,
@@ -1088,22 +1093,25 @@ async function resolveStormySearch(
       };
     }
 
+    // Still pick the best scoring option — never return empty for the client to randomize.
+    const source = snippetCount > 0 || bestScore > 0 ? "smart-guess" : "smart-guess";
     steps.push({
-      message: `Low confidence (best=${Math.round(bestScore)}, margin=${Math.round(margin)}) — guessing`,
+      message: `Smart guess → "${choices[bestIndex]}" (score ${Math.round(bestScore)}, margin ${Math.round(margin)})`,
       level: "warn",
     });
     return {
-      choiceIndex: null,
-      textAnswer: null,
+      choiceIndex: bestIndex,
+      textAnswer: choices[bestIndex],
       confidence: bestScore,
       margin,
-      source: snippetCount > 0 ? "low-confidence" : "no-results",
+      source,
       queries,
       snippetCount,
       usedImage,
       steps,
       imageDescription,
       engine: "stormy-search",
+      smartGuess: true,
     };
   }
 
