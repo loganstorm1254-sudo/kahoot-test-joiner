@@ -1,10 +1,10 @@
 /**
- * Stormy™ ad config — one quiet display banner (AdSense).
- * Fill these in after you get approved at https://www.google.com/adsense/
- * Leave blank to hide the ad slot completely.
+ * Stormy™ ads — Media.net (one quiet banner, no popups).
  *
- * Do NOT turn on AdSense “Auto ads” / Vignette / Anchor in the AdSense dashboard —
- * those interrupt users. This site only loads a single in-content display unit.
+ * 1. Point kahoot.lopro.cc at this site on Vercel
+ * 2. Sign up: https://www.media.net/
+ * 3. Add site kahoot.lopro.cc → get approved
+ * 4. Create one Display ad unit → paste CID + Tag ID below
  */
-export const AD_CLIENT = "ca-pub-9130248624326148";
-export const AD_SLOT = ""; // create a Display ad unit in AdSense, then paste data-ad-slot here
+export const MEDIANET_CID = ""; // e.g. "8CUX1A2B3C"
+export const MEDIANET_TAG_ID = ""; // e.g. "123456789" (ad tag / container id)

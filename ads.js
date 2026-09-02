@@ -1,70 +1,76 @@
-import { AD_CLIENT, AD_SLOT } from "./ads-config.js";
+import { MEDIANET_CID, MEDIANET_TAG_ID } from "./ads-config.js";
 
-const ADS_SCRIPT = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js";
+const MEDIANET_VERSION = "3121199";
+const AD_SIZE = "728x90";
 
-function hasClient() {
-  return Boolean(String(AD_CLIENT || "").trim());
+function ready() {
+  return Boolean(String(MEDIANET_CID || "").trim() && String(MEDIANET_TAG_ID || "").trim());
 }
 
-function hasSlot() {
-  return Boolean(String(AD_SLOT || "").trim());
+function loadMediaNet() {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector('script[src*="dmedianet.js"]')) {
+      resolve();
+      return;
+    }
+
+    window._mNHandle = window._mNHandle || {};
+    window._mNHandle.queue = window._mNHandle.queue || [];
+    window.medianet_versionId = MEDIANET_VERSION;
+
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = `https://contextual.media.net/dmedianet.js?cid=${encodeURIComponent(MEDIANET_CID.trim())}`;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("medianet script failed"));
+    document.head.appendChild(script);
+  });
 }
 
-function mountSlot(root) {
+function mountBanner(root) {
   if (!root || root.dataset.stormyAdReady === "1") {
     return;
   }
   root.dataset.stormyAdReady = "1";
   root.hidden = false;
 
-  const ins = document.createElement("ins");
-  ins.className = "adsbygoogle";
-  ins.style.display = "block";
-  ins.style.minHeight = "90px";
-  ins.setAttribute("data-ad-client", AD_CLIENT.trim());
-  ins.setAttribute("data-ad-slot", AD_SLOT.trim());
-  ins.setAttribute("data-ad-format", "horizontal");
-  ins.setAttribute("data-full-width-responsive", "true");
-  root.appendChild(ins);
+  const tagId = MEDIANET_TAG_ID.trim();
+  const slot = document.createElement("div");
+  slot.id = `stormy-mn-${tagId}`;
+  root.appendChild(slot);
 
-  try {
-    (window.adsbygoogle = window.adsbygoogle || []).push({});
-  } catch {
-    // ignore
+  const run = () => {
+    try {
+      window._mNHandle.queue.push(function () {
+        window._mNDetails.loadTag(tagId, AD_SIZE, slot.id);
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  if (window._mNDetails) {
+    run();
+  } else {
+    window._mNHandle.queue.push(run);
   }
 }
 
-function loadScript() {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src*="adsbygoogle.js"]`)) {
-      resolve();
-      return;
-    }
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = `${ADS_SCRIPT}?client=${encodeURIComponent(AD_CLIENT.trim())}`;
-    script.crossOrigin = "anonymous";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("ads script failed"));
-    document.head.appendChild(script);
-  });
-}
-
-/** Load one non-intrusive display ad into #stormy-ad (joiner footer). */
+/** One in-flow Media.net banner on the joiner footer. */
 export async function initStormyAd() {
   const root = document.getElementById("stormy-ad");
   if (!root) {
     return;
   }
-  if (!hasClient() || !hasSlot()) {
+  if (!ready()) {
     root.hidden = true;
     root.replaceChildren();
     return;
   }
 
   try {
-    await loadScript();
-    mountSlot(root);
+    await loadMediaNet();
+    mountBanner(root);
   } catch {
     root.hidden = true;
   }
