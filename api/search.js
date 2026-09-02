@@ -1,16 +1,14 @@
 import { resolveKahootImageUrl } from "../kahoot-images.js";
 import { stormyReasonPick } from "../lib/stormy-ai.js";
+import { guardRejectedResponse, isTrustedSiteRequest, trustedCorsHeaders } from "../lib/site-guard.js";
 
 const STORMY_SEARCH_VERSION = "1.0";
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
-function corsHeaders() {
+function corsHeaders(request) {
   return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Cache-Control": "no-store, no-cache, must-revalidate",
+    ...trustedCorsHeaders(request),
     "X-Stormy-Search": STORMY_SEARCH_VERSION,
   };
 }
@@ -1184,11 +1182,15 @@ async function parseSearchRequest(request) {
   };
 }
 
-export async function OPTIONS() {
-  return new Response(null, { headers: corsHeaders() });
+export async function OPTIONS(request) {
+  return new Response(null, { headers: corsHeaders(request) });
 }
 
 export async function GET(request) {
+  if (!isTrustedSiteRequest(request)) {
+    return guardRejectedResponse(corsHeaders(request));
+  }
+
   const payload = await parseSearchRequest(request);
 
   try {
@@ -1199,7 +1201,7 @@ export async function GET(request) {
       payload.choiceImages,
       payload.inlineImages,
     );
-    return Response.json(result, { headers: corsHeaders() });
+    return Response.json(result, { headers: corsHeaders(request) });
   } catch {
     return Response.json(
       {
@@ -1214,7 +1216,7 @@ export async function GET(request) {
         imageDescription: "",
         engine: "stormy-search",
       },
-      { status: 500, headers: corsHeaders() },
+      { status: 500, headers: corsHeaders(request) },
     );
   }
 }

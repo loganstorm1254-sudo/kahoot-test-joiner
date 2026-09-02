@@ -1,3 +1,4 @@
+import { stormyFetch } from "./site-fetch.js";
 import {
   deterministicChoice,
   getLearnedCorrectIndices,
@@ -170,7 +171,7 @@ async function reserveSession(pin, { attempts = 3 } = {}) {
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const response = await fetch(`/api/session?pin=${encodeURIComponent(pin)}`);
+      const response = await stormyFetch(`/api/session?pin=${encodeURIComponent(pin)}`);
       const data = await readJsonResponse(response);
 
       if (!response.ok || data.error) {
@@ -717,7 +718,7 @@ export class KahootJoiner {
     }
 
     try {
-      const response = await fetch(`/api/quiz?quizId=${encodeURIComponent(quizId)}`);
+      const response = await stormyFetch(`/api/quiz?quizId=${encodeURIComponent(quizId)}`);
       const data = await response.json().catch(() => null);
       if (data?.answers?.length) {
         this.applyQuizAnswers(data);

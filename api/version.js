@@ -1,16 +1,14 @@
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Cache-Control": "no-store, no-cache, must-revalidate",
-  };
+import { guardRejectedResponse, isTrustedSiteRequest, trustedCorsHeaders } from "../lib/site-guard.js";
+
+export async function OPTIONS(request) {
+  return new Response(null, { headers: trustedCorsHeaders(request) });
 }
 
-export async function OPTIONS() {
-  return new Response(null, { headers: corsHeaders() });
-}
+export async function GET(request) {
+  if (!isTrustedSiteRequest(request)) {
+    return guardRejectedResponse(trustedCorsHeaders(request));
+  }
 
-export async function GET() {
   const sha = process.env.VERCEL_GIT_COMMIT_SHA || "local";
   const shortSha = sha.slice(0, 7);
   const deployedAt = process.env.VERCEL_DEPLOYMENT_CREATED_AT || new Date().toISOString();
@@ -21,8 +19,8 @@ export async function GET() {
       fullSha: sha,
       label: `build ${shortSha}`,
       deployedAt,
-      features: ["stormy-2026-v4", "stormy-search", "smart-guess", "kahoot-joiner", "activity-log"],
+      features: ["stormy-2026-v5", "site-shield", "stormy-search", "smart-guess", "kahoot-joiner"],
     },
-    { headers: corsHeaders() },
+    { headers: trustedCorsHeaders(request) },
   );
 }

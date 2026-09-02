@@ -13,6 +13,7 @@ import {
 } from "./quiz-answers.js";
 import { CLIENT_BUILD } from "./version.js";
 import { appendActivityLog, appendActivitySteps, clearActivityLog } from "./activity-log.js";
+import { stormyFetch } from "./site-fetch.js";
 
 const pinInput = document.getElementById("pin");
 const nameInput = document.getElementById("name");
@@ -101,7 +102,7 @@ function renderVersionInfo() {
 }
 
 async function fetchLatestVersion() {
-  const response = await fetch(`/api/version?ts=${Date.now()}`, { cache: "no-store" });
+  const response = await stormyFetch(`/api/version?ts=${Date.now()}`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Version check failed (${response.status})`);
   }
@@ -857,7 +858,7 @@ function onDecoyPinInput() {
 }
 
 async function validateGamePin(pin) {
-  const response = await fetch(`/api/session?pin=${encodeURIComponent(pin)}`);
+  const response = await stormyFetch(`/api/session?pin=${encodeURIComponent(pin)}`);
   let data;
   try {
     data = await response.json();

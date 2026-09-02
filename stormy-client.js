@@ -1,3 +1,5 @@
+import { stormyFetch } from "./site-fetch.js";
+
 const MAX_INLINE_BYTES = 4_500_000;
 
 export async function fetchImageInline(imageUrl) {
@@ -9,7 +11,7 @@ export async function fetchImageInline(imageUrl) {
   try {
     let response = await fetch(url, { mode: "cors", credentials: "omit" });
     if (!response.ok) {
-      response = await fetch(`/api/image-proxy?url=${encodeURIComponent(url)}`);
+      response = await stormyFetch(`/api/image-proxy?url=${encodeURIComponent(url)}`);
     }
     if (!response.ok) {
       return null;
@@ -33,7 +35,7 @@ export async function fetchImageInline(imageUrl) {
     };
   } catch {
     try {
-      const response = await fetch(`/api/image-proxy?url=${encodeURIComponent(url)}`);
+      const response = await stormyFetch(`/api/image-proxy?url=${encodeURIComponent(url)}`);
       if (!response.ok) {
         return null;
       }

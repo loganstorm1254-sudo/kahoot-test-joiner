@@ -1,4 +1,5 @@
 import { buildInlineImages } from "./stormy-client.js";
+import { stormyFetch } from "./site-fetch.js";
 
 const learnedAnswersByPin = new Map();
 const cacheByPin = new Map();
@@ -148,7 +149,7 @@ export function normalizeTitle(title) {
 }
 
 async function fetchQuizApi(query) {
-  const response = await fetch(`/api/quiz?${query}`);
+  const response = await stormyFetch(`/api/quiz?${query}`);
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.error) {
     return null;
@@ -279,7 +280,7 @@ export function lookupSearchAnswer(
         inlineImages = await buildInlineImages(normalizedImageUrl, normalizedChoiceImages);
       }
 
-      const response = await fetch("/api/stormy-search", {
+      const response = await stormyFetch("/api/stormy-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -1,14 +1,11 @@
 import { resolveKahootImageUrl } from "../kahoot-images.js";
+import { guardRejectedResponse, isTrustedSiteRequest, trustedCorsHeaders } from "../lib/site-guard.js";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
+function corsHeaders(request) {
+  return trustedCorsHeaders(request);
 }
 
 function kahootHeaders(origin = "https://kahoot.it") {
@@ -482,11 +479,15 @@ async function fetchQuizByPin(pin) {
   return null;
 }
 
-export async function OPTIONS() {
-  return new Response(null, { headers: corsHeaders() });
+export async function OPTIONS(request) {
+  return new Response(null, { headers: corsHeaders(request) });
 }
 
 export async function GET(request) {
+  if (!isTrustedSiteRequest(request)) {
+    return guardRejectedResponse(corsHeaders(request));
+  }
+
   const url = new URL(request.url);
   const pin = (url.searchParams.get("pin") || "").replace(/\s+/g, "");
   const title = url.searchParams.get("title") || "";
@@ -499,19 +500,19 @@ export async function GET(request) {
       if (!result) {
         return Response.json(
           { error: "Could not find a public quiz matching that title and question layout." },
-          { status: 404, headers: corsHeaders() },
+          { status: 404, headers: corsHeaders(request) },
         );
       }
-      return Response.json(result, { headers: corsHeaders() });
+      return Response.json(result, { headers: corsHeaders(request) });
     }
 
     if (!pin || !/^\d{6,}$/.test(pin)) {
-      return Response.json({ error: "Invalid PIN" }, { status: 400, headers: corsHeaders() });
+      return Response.json({ error: "Invalid PIN" }, { status: 400, headers: corsHeaders(request) });
     }
 
     const pinResult = await fetchQuizByPin(pin);
     if (pinResult) {
-      return Response.json(pinResult, { headers: corsHeaders() });
+      return Response.json(pinResult, { headers: corsHeaders(request) });
     }
 
     return Response.json(
@@ -519,12 +520,12 @@ export async function GET(request) {
         error: "Live game PINs cannot be looked up directly. Answers load when the quiz starts.",
         livePin: true,
       },
-      { status: 404, headers: corsHeaders() },
+      { status: 404, headers: corsHeaders(request) },
     );
   } catch (error) {
     return Response.json(
       { error: error.message || "Server error" },
-      { status: 500, headers: corsHeaders() },
+      { status: 500, headers: corsHeaders(request) },
     );
   }
 }
