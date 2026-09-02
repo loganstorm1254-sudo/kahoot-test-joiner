@@ -8,10 +8,6 @@ import {
   onValue,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-import { encryptBlooketPayload } from "./blooket-crypto.js";
-
-const BLOOKET_JOIN_URL = "https://fb.blooket.com/c/firebase/join";
-
 const BLOOKET_FIREBASE_CONFIG = {
   apiKey: "AIzaSyCA-cTOnX19f6LFnDVVsHXya3k6ByP_MnU",
   authDomain: "blooket-2020.firebaseapp.com",
@@ -57,124 +53,28 @@ export function isValidBlooketGameId(value) {
   return digits.length >= 5 && digits.length <= 7;
 }
 
-export function isValidBlooketGameId(value) {
-  const digits = normalizeBlooketGameId(value);
-  return digits.length >= 5 && digits.length <= 7;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function loadBlooketBuildConfig() {
-  const response = await fetch("/api/blooket-build");
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.buildId || !data.secret) {
-    throw new Error(data.error || "Could not load Blooket build config.");
-  }
-  return data;
-}
-
-async function parseJoinResponse(response) {
-  const text = await response.text();
-  let data = {};
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { success: false, msg: `Invalid response (HTTP ${response.status}).` };
-  }
-  if (!data.success && !data.msg) {
-    data.msg = "Could not join that game.";
-  }
-  data.httpStatus = response.status;
-  return data;
-}
-
-async function joinBlooketFromBrowser(gameId, name, buildConfig) {
-  const payload = { id: String(gameId), name: String(name) };
-  const body = await encryptBlooketPayload(payload, buildConfig.secret);
-  const response = await fetch(BLOOKET_JOIN_URL, {
-    method: "PUT",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Blooket-Build": buildConfig.buildId,
-    },
-    body,
-  });
-  return parseJoinResponse(response);
-}
-
-async function requestBlooketJoinsFromBrowser(gameId, names) {
-  const buildConfig = await loadBlooketBuildConfig();
-  const joins = [];
-
-  for (const name of names) {
-    const joinData = await joinBlooketFromBrowser(gameId, name, buildConfig);
-    joins.push({ name, ...joinData });
-    await sleep(120);
-  }
-
-  const successCount = joins.filter((entry) => entry.success).length;
-  return {
-    success: successCount > 0,
-    joins,
-    successCount,
-    totalCount: joins.length,
-    msg:
-      successCount === joins.length
-        ? undefined
-        : successCount === 0
-          ? joins[0]?.msg || "Could not join that game."
-          : `Joined ${successCount}/${joins.length} players.`,
-  };
-}
-
-async function requestBlooketJoinsFromServer(gameId, names, signal) {
-  const response = await fetch("/api/blooket-join", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: gameId, names }),
-    signal,
-  });
-  const raw = await response.text();
-  let data = {};
-  try {
-    data = raw ? JSON.parse(raw) : {};
-  } catch {
-    throw new Error(`Server error (${response.status}). Hard refresh and retry.`);
-  }
-  if (!Array.isArray(data.joins)) {
-    throw new Error(data.msg || `Join request failed (HTTP ${response.status}).`);
-  }
-  if (
-    data.successCount === 0 &&
-    data.joins.every((entry) => entry.httpStatus === 403 || /blocked by blooket/i.test(entry.msg || ""))
-  ) {
-    throw new Error(
-      "Blooket blocks joins from Vercel. Deploy this repo on Cloudflare Pages instead (see README), or set BLOOKET_JOIN_WORKER_URL on Vercel.",
-    );
-  }
-  return data;
-}
-
 export async function requestBlooketJoins(gameId, names) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000);
+  const timeoutId = setTimeout(() => controller.abort(), 180000);
 
   try {
+    const response = await fetch("/api/blooket-join", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: gameId, names }),
+      signal: controller.signal,
+    });
+    const raw = await response.text();
+    let data = {};
     try {
-      return await requestBlooketJoinsFromBrowser(gameId, names);
-    } catch (browserError) {
-      const blockedByCors =
-        browserError instanceof TypeError ||
-        /failed to fetch|cors|network/i.test(browserError?.message || "");
-      if (!blockedByCors) {
-        throw browserError;
-      }
+      data = raw ? JSON.parse(raw) : {};
+    } catch {
+      throw new Error(`Server error (${response.status}). Hard refresh and retry.`);
     }
-
-    return await requestBlooketJoinsFromServer(gameId, names, controller.signal);
+    if (!Array.isArray(data.joins)) {
+      throw new Error(data.msg || `Join request failed (HTTP ${response.status}).`);
+    }
+    return data;
   } catch (error) {
     if (error.name === "AbortError") {
       throw new Error("Join timed out — try fewer players or retry.");
