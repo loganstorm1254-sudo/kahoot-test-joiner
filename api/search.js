@@ -63,9 +63,26 @@ function uniqueQueries(queries) {
   return result;
 }
 
+function formatOptionsBlock(choices) {
+  const choiceList = choices.map((choice) => String(choice || "").trim()).filter(Boolean);
+  if (!choiceList.length) {
+    return "";
+  }
+  return `Here are the options:\n${choiceList.map((choice, index) => `${index + 1}. ${choice}`).join("\n")}`;
+}
+
+function formatQuestionWithOptions(question, choices) {
+  const optionsBlock = formatOptionsBlock(choices);
+  if (!optionsBlock) {
+    return String(question || "").trim();
+  }
+  return `${String(question || "").trim()}\n\n${optionsBlock}`;
+}
+
 function buildSearchQueries(question, choices) {
   const choiceList = choices.map((choice) => String(choice || "").trim()).filter(Boolean);
-  const queries = [question];
+  const withOptions = formatQuestionWithOptions(question, choiceList);
+  const queries = [question, withOptions];
 
   for (const choice of choiceList) {
     queries.push(`${question} ${choice}`);
@@ -77,6 +94,7 @@ function buildSearchQueries(question, choices) {
   }
 
   queries.push(`${question} answer`);
+  queries.push(`${withOptions} which is correct`);
   return uniqueQueries(queries).slice(0, 8);
 }
 
@@ -865,7 +883,8 @@ async function resolveStormySearch(
     };
   }
 
-  const queries = [normalizedQuestion];
+  const questionWithOptions = formatQuestionWithOptions(normalizedQuestion, choices);
+  const queries = [normalizedQuestion, questionWithOptions];
   const scores = choices.map(() => 0);
   const usedSources = new Set();
   let snippetCount = 0;
@@ -952,12 +971,24 @@ async function resolveStormySearch(
     }
   }
 
-  steps.push({ message: `Text search: "${normalizedQuestion.slice(0, 80)}${normalizedQuestion.length > 80 ? "…" : ""}"`, level: "info" });
+  const optionsPreview = choices
+    .map((choice) => String(choice || "").trim())
+    .filter(Boolean)
+    .join(" · ");
+  steps.push({
+    message: `Search question: "${normalizedQuestion.slice(0, 72)}${normalizedQuestion.length > 72 ? "…" : ""}"`,
+    level: "info",
+  });
+  steps.push({
+    message: `Here are the options: ${optionsPreview.slice(0, 120)}${optionsPreview.length > 120 ? "…" : ""}`,
+    level: "info",
+  });
 
-  const [main, ...choiceResults] = await Promise.all([
+  const [main, withOptions, ...choiceResults] = await Promise.all([
     runGoogleQuery(normalizedQuestion),
+    runGoogleQuery(questionWithOptions),
     ...choices.map(async (choice, index) => {
-      const query = `${normalizedQuestion} "${choice}"`;
+      const query = `${normalizedQuestion} Here are the options: ${choice}`;
       const result = await runGoogleQuery(query);
       return { index, query, result };
     }),
@@ -968,7 +999,17 @@ async function resolveStormySearch(
     snippetCount += main.snippets.length;
     accumulateChoiceScores(choices, main, scores, 2.5);
     steps.push({
-      message: `Main search (${main.source}): ${main.titles[0] || main.snippets[0] || "results"}`,
+      message: `Question search (${main.source}): ${main.titles[0] || main.snippets[0] || "results"}`,
+      level: "info",
+    });
+  }
+
+  if (withOptions) {
+    usedSources.add(withOptions.source);
+    snippetCount += withOptions.snippets.length;
+    accumulateChoiceScores(choices, withOptions, scores, 3.2);
+    steps.push({
+      message: `Options search (${withOptions.source}): ${withOptions.titles[0] || withOptions.snippets[0] || "results"}`,
       level: "info",
     });
   }

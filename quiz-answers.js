@@ -203,8 +203,9 @@ export function lookupSearchAnswer(
     return Promise.resolve(null);
   }
 
+  const bareQuestion = String(question || "").trim();
   const searchQuestion =
-    String(question || "").trim() || `Which answer is correct? Options: ${validLabels.join(", ")}`;
+    bareQuestion || `Which answer is correct?\n\nHere are the options:\n${validLabels.map((label, index) => `${index + 1}. ${label}`).join("\n")}`;
 
   const normalizedImageUrl = String(imageUrl || "").trim();
   const normalizedChoiceImages = (choiceImages || [])
