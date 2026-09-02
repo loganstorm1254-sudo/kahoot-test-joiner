@@ -64,9 +64,15 @@ export async function requestBlooketJoins(gameId, names) {
       body: JSON.stringify({ id: gameId, names }),
       signal: controller.signal,
     });
-    const data = await response.json().catch(() => ({}));
+    const raw = await response.text();
+    let data = {};
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch {
+      throw new Error(`Server error (${response.status}). Hard refresh and retry.`);
+    }
     if (!Array.isArray(data.joins)) {
-      throw new Error(data.msg || "Join request failed.");
+      throw new Error(data.msg || `Join request failed (HTTP ${response.status}).`);
     }
     return data;
   } catch (error) {

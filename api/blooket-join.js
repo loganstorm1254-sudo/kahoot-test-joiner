@@ -1,4 +1,4 @@
-import { joinBlooketPlayers } from "../lib/blooket-server-join.js";
+import { joinBlooketPlayers } from "../lib/blooket-join-backend.js";
 
 function corsHeaders() {
   return {
@@ -29,7 +29,7 @@ export async function PUT(request) {
 
     if (!id || !names.length) {
       return Response.json(
-        { success: false, msg: "Game ID and at least one name are required." },
+        { success: false, msg: "Game ID and at least one name are required.", joins: [] },
         { status: 400, headers: corsHeaders() },
       );
     }
@@ -53,6 +53,7 @@ export async function PUT(request) {
       { headers: corsHeaders() },
     );
   } catch (error) {
+    console.error("blooket-join error:", error);
     return Response.json(
       {
         success: false,

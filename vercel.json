@@ -10,7 +10,8 @@
       "maxDuration": 30
     },
     "api/blooket-join.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "memory": 1024
     },
     "api/version.js": {
       "maxDuration": 10
