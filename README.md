@@ -21,7 +21,7 @@ git push origin main
 
 - `/api/session` proxies Kahoot session reservation (CORS)
 - WebSocket connections go directly from the browser to `wss://kahoot.it`
-- `/api/blooket-join` uses headless Chromium on Vercel when Blooket blocks plain server fetch
+- `/api/blooket-join` proxies Blooket joins (same pattern as `/api/session` for Kahoot). The Cloudflare worker uses Browser Rendering when Blooket blocks datacenter IPs.
 
 The first Blooket batch can take **20–40 seconds** while Chromium downloads and joins.
 

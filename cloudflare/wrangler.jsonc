@@ -2,5 +2,9 @@
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "kahoot-test-joiner-blooket",
   "main": "blooket-join-worker.js",
-  "compatibility_date": "2026-02-01"
+  "compatibility_date": "2026-02-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "browser": {
+    "binding": "MYBROWSER"
+  }
 }

@@ -1,0 +1,8 @@
+{
+  "name": "kahoot-test-joiner-blooket-worker",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@cloudflare/puppeteer": "^1.0.4"
+  }
+}

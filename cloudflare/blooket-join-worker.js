@@ -1,7 +1,9 @@
+import puppeteer from "@cloudflare/puppeteer";
+
 const PLAY_ORIGIN = "https://play.blooket.com";
 const JOIN_URL = "https://fb.blooket.com/c/firebase/join";
 const USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 const BUILD_UUID_RE = /\w{8}-\w{4}-\w{4}-\w{4}-\w{12}/;
 const SECRET_RE = /\(new TextEncoder\)\.encode\("(.+?)"\)/;
@@ -9,7 +11,7 @@ const SECRET_RE = /\(new TextEncoder\)\.encode\("(.+?)"\)/;
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "PUT, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Cache-Control": "no-store, no-cache, must-revalidate",
   };
@@ -41,6 +43,13 @@ function parseJoinBody(text, statusCode) {
       preview,
     };
   }
+}
+
+function isBlockedJoin(joinData) {
+  return (
+    !joinData.success &&
+    (joinData.httpStatus === 403 || /blocked by blooket|cloudflare/i.test(joinData.msg || ""))
+  );
 }
 
 function mergeSetCookie(existing, setCookieHeader) {
@@ -163,7 +172,118 @@ async function requestJoin(gameId, name, cookies, { encrypted = false, buildConf
   return parseJoinBody(text, response.status);
 }
 
-async function joinBlooketPlayers(gameId, names) {
+async function scrapeBuildConfigInPage(page) {
+  return page.evaluate(async () => {
+    const buildUuid = /\w{8}-\w{4}-\w{4}-\w{4}-\w{12}/;
+    const secretRe = /\(new TextEncoder\)\.encode\("(.+?)"\)/;
+    const paths = [...document.querySelectorAll("script[src]")]
+      .map((node) => node.getAttribute("src"))
+      .filter((src) => src && src.includes("/assets/"))
+      .slice(0, 12);
+
+    for (const path of paths) {
+      try {
+        const response = await fetch(path, { credentials: "include" });
+        const source = await response.text();
+        if (buildUuid.test(source) && secretRe.test(source)) {
+          return {
+            buildId: source.match(buildUuid)[0],
+            secret: source.match(secretRe)[1],
+          };
+        }
+      } catch {
+        // Try the next asset bundle.
+      }
+    }
+    return null;
+  });
+}
+
+async function joinPlayersInBrowser(env, gameId, names) {
+  const browser = await puppeteer.launch(env.MYBROWSER);
+  try {
+    const page = await browser.newPage();
+    await page.setUserAgent(USER_AGENT);
+    await page.goto(`${PLAY_ORIGIN}/play?id=${encodeURIComponent(gameId)}`, {
+      waitUntil: "networkidle2",
+      timeout: 45000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+
+    const buildConfig = await scrapeBuildConfigInPage(page);
+    const results = [];
+
+    for (const name of names) {
+      const joinData = await page.evaluate(
+        async (joinUrl, gameIdValue, playerName, config) => {
+          async function encryptPayload(payload, secret) {
+            const blocks = new TextEncoder().encode(JSON.stringify(payload));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+            const key = await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt"]);
+            const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, blocks);
+            const ivText = Array.from(iv, (byte) => String.fromCharCode(byte)).join("");
+            const cipherText = Array.from(new Uint8Array(ciphertext), (byte) => String.fromCharCode(byte)).join("");
+            return btoa(ivText + cipherText);
+          }
+
+          const payload = { id: String(gameIdValue), name: String(playerName) };
+          let response = await fetch(joinUrl, {
+            method: "PUT",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          let text = await response.text();
+          let data = {};
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch {
+            data = { success: false, msg: `Invalid response (HTTP ${response.status}).` };
+          }
+
+          if (!data.success && config?.buildId && config?.secret) {
+            const body = await encryptPayload(payload, config.secret);
+            response = await fetch(joinUrl, {
+              method: "PUT",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Blooket-Build": config.buildId,
+              },
+              body,
+            });
+            text = await response.text();
+            try {
+              data = text ? JSON.parse(text) : {};
+            } catch {
+              data = { success: false, msg: `Invalid response (HTTP ${response.status}).` };
+            }
+          }
+
+          if (!data.success && !data.msg) {
+            data.msg = response.status === 403 ? "Blocked by Blooket (HTTP 403)." : "Could not join that game.";
+          }
+          data.httpStatus = response.status;
+          return data;
+        },
+        JOIN_URL,
+        gameId,
+        name,
+        buildConfig,
+      );
+
+      results.push({ name, ...joinData });
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+
+    return results;
+  } finally {
+    await browser.close();
+  }
+}
+
+async function joinBlooketPlayers(gameId, names, env) {
   const uniqueNames = [...new Set(names.map((name) => String(name || "").trim()).filter(Boolean))];
   if (!uniqueNames.length) {
     return [];
@@ -187,7 +307,48 @@ async function joinBlooketPlayers(gameId, names) {
     await new Promise((resolve) => setTimeout(resolve, 120));
   }
 
+  const blocked = results.length > 0 && results.every((entry) => isBlockedJoin(entry));
+  if (blocked && env?.MYBROWSER) {
+    try {
+      return await joinPlayersInBrowser(env, gameId, uniqueNames);
+    } catch (error) {
+      console.error("browser join failed:", error);
+      return uniqueNames.map((name) => ({
+        name,
+        success: false,
+        msg: error?.message || "Browser join failed.",
+        httpStatus: 500,
+      }));
+    }
+  }
+
   return results;
+}
+
+async function loadBuildConfig(env) {
+  let cookies = await warmSession("");
+  const config = await scrapeBuildConfig(cookies);
+  if (config) {
+    return config;
+  }
+
+  if (!env?.MYBROWSER) {
+    return null;
+  }
+
+  const browser = await puppeteer.launch(env.MYBROWSER);
+  try {
+    const page = await browser.newPage();
+    await page.setUserAgent(USER_AGENT);
+    await page.goto(`${PLAY_ORIGIN}/play`, {
+      waitUntil: "networkidle2",
+      timeout: 45000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    return scrapeBuildConfigInPage(page);
+  } finally {
+    await browser.close();
+  }
 }
 
 function normalizeNames(body) {
@@ -207,15 +368,14 @@ function failureResults(names, message) {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders() });
     }
 
     if (request.method === "GET") {
       try {
-        const cookies = await warmSession("");
-        const buildConfig = await scrapeBuildConfig(cookies);
+        const buildConfig = await loadBuildConfig(env);
         if (!buildConfig) {
           return Response.json(
             { error: "Could not load Blooket build config." },
@@ -247,7 +407,7 @@ export default {
     }
 
     try {
-      const joins = await joinBlooketPlayers(id, names);
+      const joins = await joinBlooketPlayers(id, names, env);
       const successCount = joins.filter((entry) => entry.success).length;
 
       return Response.json(
