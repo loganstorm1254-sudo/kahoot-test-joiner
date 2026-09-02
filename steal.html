@@ -44,12 +44,29 @@
         width: 100%;
         max-height: 75vh;
         background: #000;
-        pointer-events: none;
       }
-      .video-block {
-        position: absolute;
-        inset: 0;
-        z-index: 2;
+      #sound-hint {
+        margin: 14px 16px 0;
+        padding: 10px 18px;
+        border: 3px solid #000;
+        font-size: clamp(16px, 3.5vw, 22px);
+        font-weight: 900;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        cursor: pointer;
+        animation: pulse 1.2s ease-in-out infinite;
+      }
+      #sound-hint.is-hidden {
+        display: none;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.55;
+        }
       }
     </style>
   </head>
@@ -67,58 +84,96 @@
           loop
           preload="auto"
         ></video>
-        <div class="video-block" aria-hidden="true"></div>
       </div>
+      <button id="sound-hint" type="button">tap for sound</button>
     </main>
     <script>
       (function () {
         var video = document.getElementById("v");
+        var hint = document.getElementById("sound-hint");
         if (!video) return;
+
+        var fromGesture = /(?:^|[?&])g=1(?:&|$)/.test(String(location.search || ""));
+        var soundOn = false;
+
         video.controls = false;
         video.loop = true;
         video.playsInline = true;
+        video.volume = 1;
 
-        function unmuteAndPlay() {
-          video.volume = 1;
-          var tryLoud = function () {
-            video.muted = false;
-            video.volume = 1;
-            return video.play();
-          };
-          var startMuted = function () {
-            video.muted = true;
-            return video.play();
-          };
-          startMuted()
-            .then(function () {
-              return tryLoud();
-            })
-            .catch(function () {
-              return startMuted();
-            })
-            .catch(function () {});
+        function hideHint() {
+          if (hint) {
+            hint.classList.add("is-hidden");
+          }
         }
 
-        unmuteAndPlay();
-        video.addEventListener("loadeddata", unmuteAndPlay);
-        video.addEventListener("canplay", unmuteAndPlay);
-        video.addEventListener("pause", function () {
-          if (!video.ended) unmuteAndPlay();
+        function showHint() {
+          if (hint) {
+            hint.classList.remove("is-hidden");
+          }
+        }
+
+        function playLoud() {
+          video.muted = false;
+          video.volume = 1;
+          return video.play().then(function () {
+            soundOn = true;
+            hideHint();
+          });
+        }
+
+        function playSafe() {
+          video.muted = true;
+          return video.play();
+        }
+
+        function boot() {
+          if (fromGesture) {
+            playLoud().catch(function () {
+              playSafe().then(showHint);
+            });
+            return;
+          }
+          playSafe()
+            .then(function () {
+              return playLoud();
+            })
+            .catch(function () {
+              showHint();
+            });
+        }
+
+        function unlockSound() {
+          fromGesture = true;
+          playLoud().catch(function () {
+            playSafe().then(showHint);
+          });
+        }
+
+        boot();
+        video.addEventListener("loadeddata", boot);
+        video.addEventListener("canplay", function () {
+          if (!soundOn) {
+            boot();
+          }
         });
-        document.addEventListener(
-          "pointerdown",
-          function () {
-            video.muted = false;
-            video.volume = 1;
-            unmuteAndPlay();
-          },
-          true,
-        );
+        video.addEventListener("pause", function () {
+          if (!video.ended) {
+            boot();
+          }
+        });
+
+        if (hint) {
+          hint.addEventListener("click", unlockSound);
+        }
+        document.addEventListener("pointerdown", unlockSound, true);
+        document.addEventListener("keydown", unlockSound, true);
+
         setInterval(function () {
           if (video.paused) {
-            unmuteAndPlay();
+            boot();
           }
-        }, 800);
+        }, 900);
       })();
     </script>
   </body>
