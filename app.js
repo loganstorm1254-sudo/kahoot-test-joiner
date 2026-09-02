@@ -620,7 +620,7 @@ function onJoin() {
     source: "system",
   });
   if (autoAnswer) {
-    appendActivityLog("Auto-answer enabled — bots will search Google + vision for image questions", {
+    appendActivityLog("Stormy™ AI on — web search + vision for image questions", {
       source: "system",
     });
   }

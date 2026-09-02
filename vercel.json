@@ -7,7 +7,13 @@
       "maxDuration": 30
     },
     "api/search.js": {
-      "maxDuration": 30
+      "maxDuration": 60
+    },
+    "api/stormy-search.js": {
+      "maxDuration": 60
+    },
+    "api/image-proxy.js": {
+      "maxDuration": 15
     },
     "api/version.js": {
       "maxDuration": 10
@@ -42,7 +48,7 @@
       ]
     },
     {
-      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|version)\\.js",
+      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|stormy-client|version)\\.js",
       "headers": [
         {
           "key": "Cache-Control",

@@ -460,6 +460,20 @@ button {
   color: #222;
 }
 
+.joiner-brand {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.stormy-footer {
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  margin-bottom: 4px;
+}
+
 .joiner-form {
   margin: 0;
   padding: 0;

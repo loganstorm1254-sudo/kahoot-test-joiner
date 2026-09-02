@@ -1,14 +1,17 @@
 import { resolveKahootImageUrl } from "../kahoot-images.js";
+import { stormyReasonPick } from "../lib/stormy-ai.js";
 
+const STORMY_SEARCH_VERSION = "1.0";
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Cache-Control": "no-store, no-cache, must-revalidate",
+    "X-Stormy-Search": STORMY_SEARCH_VERSION,
   };
 }
 
@@ -476,7 +479,60 @@ async function describeImageWithOpenAI(imageUrl, prompt) {
   return data?.choices?.[0]?.message?.content?.trim() || null;
 }
 
-async function describeImage(imageUrl, prompt) {
+async function describeImageFromInline(inline, prompt) {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey || !inline?.data) {
+    return null;
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": USER_AGENT,
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inline_data: {
+                mime_type: inline.mime || "image/jpeg",
+                data: inline.data,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 80,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json().catch(() => null);
+  const text = data?.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text || "")
+    .join(" ")
+    .trim();
+  return text ? { text, source: "stormy-vision-inline" } : null;
+}
+
+async function describeImage(imageUrl, prompt, inline = null) {
+  if (inline?.data) {
+    const inlineResult = await describeImageFromInline(inline, prompt);
+    if (inlineResult) {
+      return inlineResult;
+    }
+  }
+
   const gemini = await describeImageWithGemini(imageUrl, prompt);
   if (gemini) {
     return { text: gemini, source: "gemini-vision" };
@@ -490,7 +546,7 @@ async function describeImage(imageUrl, prompt) {
   return null;
 }
 
-async function runVisionAnalysis(question, choices, imageUrl, choiceImages, steps) {
+async function runVisionAnalysis(question, choices, imageUrl, choiceImages, steps, inlineImages = null) {
   const normalizedQuestionImage = normalizeImageUrl(imageUrl);
   const normalizedChoiceImages = (choiceImages || [])
     .map((url) => normalizeImageUrl(url))
@@ -507,14 +563,18 @@ async function runVisionAnalysis(question, choices, imageUrl, choiceImages, step
     };
   }
 
-  steps.push({ message: "Running vision on question/choice images…", level: "info" });
+  steps.push({ message: "Stormy™ vision: analyzing images…", level: "info" });
 
   const questionPrompt = `Identify the character, person, animal, or main subject. Reply with ONLY the name (1-5 words). Context: ${question}`;
   const choicePrompt = "Name this character or person. Reply with ONLY the name (1-5 words).";
 
   let questionVision = null;
-  if (hasQuestionImage) {
-    questionVision = await describeImage(normalizedQuestionImage, questionPrompt);
+  if (hasQuestionImage || inlineImages?.question) {
+    questionVision = await describeImage(
+      normalizedQuestionImage,
+      questionPrompt,
+      inlineImages?.question || null,
+    );
     if (questionVision?.text) {
       steps.push({
         message: `Vision (question image): ${questionVision.text}`,
@@ -534,7 +594,10 @@ async function runVisionAnalysis(question, choices, imageUrl, choiceImages, step
   if (hasChoiceImages) {
     const paddedImages = choices.map((_, index) => normalizedChoiceImages[index] || "");
     const results = await Promise.all(
-      paddedImages.map((url) => (url ? describeImage(url, choicePrompt) : Promise.resolve(null))),
+      paddedImages.map((url, index) => {
+        const inline = inlineImages?.choices?.[index] || null;
+        return url || inline ? describeImage(url, choicePrompt, inline) : Promise.resolve(null);
+      }),
     );
 
     for (let index = 0; index < results.length; index += 1) {
@@ -948,7 +1011,13 @@ async function runGoogleQuery(query) {
   return wikipediaSearch(query);
 }
 
-async function resolveFromGoogle(question, choices, imageUrl = "", choiceImages = []) {
+async function resolveStormySearch(
+  question,
+  choices,
+  imageUrl = "",
+  choiceImages = [],
+  inlineImages = null,
+) {
   const normalizedQuestion = String(question || "").trim();
   const normalizedImageUrl = normalizeImageUrl(imageUrl);
   const normalizedChoiceImages = (choiceImages || []).map((url) => normalizeImageUrl(url));
@@ -981,6 +1050,7 @@ async function resolveFromGoogle(question, choices, imageUrl = "", choiceImages 
     normalizedImageUrl,
     normalizedChoiceImages,
     steps,
+    inlineImages,
   );
   imageDescription = vision.imageDescription || "";
 
@@ -1119,10 +1189,37 @@ async function resolveFromGoogle(question, choices, imageUrl = "", choiceImages 
     .join(", ");
   steps.push({ message: `Scores: ${scoreSummary}`, level: "info" });
 
-  const minScore = usedImage || vision.usedVision ? 5 : 8;
-  const minMargin = usedImage || vision.usedVision ? 4 : 6;
+  const minScore = usedImage || vision.usedVision ? 4 : 8;
+  const minMargin = usedImage || vision.usedVision ? 3 : 6;
+
+  const evidenceCorpus = [
+    vision.visionCorpus,
+    ...choices.map((choice, index) => `${choice}: score ${Math.round(scores[index])}`),
+  ].join("\n");
 
   if (bestIndex < 0 || bestScore < minScore || margin < minMargin) {
+    const aiPick = await stormyReasonPick(
+      normalizedQuestion,
+      choices,
+      evidenceCorpus,
+      imageDescription || vision.visionCorpus,
+    );
+    if (aiPick) {
+      steps.push({
+        message: `Stormy™ AI picked "${choices[aiPick.choiceIndex]}"`,
+        level: "success",
+      });
+      return {
+        ...aiPick,
+        queries,
+        snippetCount,
+        usedImage,
+        steps,
+        imageDescription,
+        engine: "stormy-search",
+      };
+    }
+
     steps.push({
       message: `Low confidence (best=${Math.round(bestScore)}, margin=${Math.round(margin)}) — guessing`,
       level: "warn",
@@ -1138,10 +1235,11 @@ async function resolveFromGoogle(question, choices, imageUrl = "", choiceImages 
       usedImage,
       steps,
       imageDescription,
+      engine: "stormy-search",
     };
   }
 
-  const source = usedSources.has("vision") || usedSources.has("gemini-vision") || usedSources.has("openai-vision")
+  const source = usedSources.has("stormy-vision-inline") || usedSources.has("vision")
     ? "vision"
     : usedSources.has("google-lens")
       ? "google-lens"
@@ -1154,7 +1252,7 @@ async function resolveFromGoogle(question, choices, imageUrl = "", choiceImages 
             : "google";
 
   steps.push({
-    message: `Picked "${choices[bestIndex]}" via ${source} (margin ${Math.round(margin)})`,
+    message: `Stormy™ picked "${choices[bestIndex]}" via ${source} (margin ${Math.round(margin)})`,
     level: "success",
   });
 
@@ -1169,6 +1267,44 @@ async function resolveFromGoogle(question, choices, imageUrl = "", choiceImages 
     usedImage,
     steps,
     imageDescription,
+    engine: "stormy-search",
+  };
+}
+
+function parseInlineImages(body) {
+  const raw = body?.inlineImages;
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const question = raw.question?.data ? raw.question : null;
+  const choices = Array.isArray(raw.choices) ? raw.choices.filter((entry) => entry?.data) : [];
+  if (!question && !choices.length) {
+    return null;
+  }
+  return { question, choices };
+}
+
+async function parseSearchRequest(request) {
+  if (request.method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    return {
+      question: body.question || "",
+      choices: Array.isArray(body.choices) ? body.choices : parseChoices(body.choices),
+      imageUrl: body.imageUrl || "",
+      choiceImages: Array.isArray(body.choiceImages)
+        ? body.choiceImages
+        : parseChoiceImages(body.choiceImages),
+      inlineImages: parseInlineImages(body),
+    };
+  }
+
+  const url = new URL(request.url);
+  return {
+    question: url.searchParams.get("question") || "",
+    choices: parseChoices(url.searchParams.get("choices")),
+    imageUrl: url.searchParams.get("imageUrl") || "",
+    choiceImages: parseChoiceImages(url.searchParams.get("choiceImages")),
+    inlineImages: null,
   };
 }
 
@@ -1177,14 +1313,16 @@ export async function OPTIONS() {
 }
 
 export async function GET(request) {
-  const url = new URL(request.url);
-  const question = url.searchParams.get("question") || "";
-  const choices = parseChoices(url.searchParams.get("choices"));
-  const imageUrl = url.searchParams.get("imageUrl") || "";
-  const choiceImages = parseChoiceImages(url.searchParams.get("choiceImages"));
+  const payload = await parseSearchRequest(request);
 
   try {
-    const result = await resolveFromGoogle(question, choices, imageUrl, choiceImages);
+    const result = await resolveStormySearch(
+      payload.question,
+      payload.choices,
+      payload.imageUrl,
+      payload.choiceImages,
+      payload.inlineImages,
+    );
     return Response.json(result, { headers: corsHeaders() });
   } catch {
     return Response.json(
@@ -1195,11 +1333,18 @@ export async function GET(request) {
         source: "error",
         queries: [],
         snippetCount: 0,
-        usedImage: Boolean(normalizeImageUrl(imageUrl) || choiceImages.length),
-        steps: [{ message: "Search API error", level: "error" }],
+        usedImage: Boolean(normalizeImageUrl(payload.imageUrl) || payload.choiceImages.length),
+        steps: [{ message: "Stormy™ search error", level: "error" }],
         imageDescription: "",
+        engine: "stormy-search",
       },
       { status: 500, headers: corsHeaders() },
     );
   }
 }
+
+export async function POST(request) {
+  return GET(request);
+}
+
+export { resolveStormySearch };

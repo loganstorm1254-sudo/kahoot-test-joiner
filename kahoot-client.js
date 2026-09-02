@@ -791,13 +791,16 @@ export class KahootJoiner {
   }
 
   formatSearchDetail(searchResult) {
-    const source = searchResult?.source || "google";
+    const source = searchResult?.source || "stormy";
     const query = searchResult?.queries?.[0];
     const snippets = searchResult?.snippetCount || 0;
     const visionNote = searchResult?.imageDescription
       ? ` saw "${searchResult.imageDescription}"`
       : "";
     const imageNote = searchResult?.usedImage ? " + image" : "";
+    if (source === "stormy-ai" || source === "stormy-vision-inline") {
+      return `Stormy™ ${source.replace("stormy-", "")}${visionNote}${imageNote}`;
+    }
     if (!query) {
       return `${source}${visionNote}${imageNote ? ` (${snippets} snippets)` : ""}`;
     }
@@ -909,7 +912,7 @@ export class KahootJoiner {
         if (search?.textAnswer) {
           return {
             choice: search.textAnswer,
-            mode: search.source === "vision" ? "vision" : "google",
+            mode: search.source === "vision" || search.source?.startsWith("stormy") ? "vision" : "google",
             detail: this.formatSearchDetail(search),
           };
         }
@@ -945,7 +948,7 @@ export class KahootJoiner {
       if (search?.choiceIndex != null && search.choiceIndex >= 0 && search.choiceIndex < numChoices) {
         return {
           choice: search.choiceIndex,
-          mode: search.source === "vision" ? "vision" : "google",
+          mode: search.source === "vision" || search.source?.startsWith("stormy") ? "vision" : "google",
           detail: this.formatSearchDetail(search),
         };
       }

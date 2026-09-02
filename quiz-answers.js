@@ -1,3 +1,5 @@
+import { buildInlineImages } from "./stormy-client.js";
+
 const learnedAnswersByPin = new Map();
 const cacheByPin = new Map();
 const cacheByTitle = new Map();
@@ -193,7 +195,7 @@ export function prefetchSearchAnswer(question, choices, options = {}) {
 export function lookupSearchAnswer(
   question,
   choices,
-  { timeoutMs = 8000, imageUrl = "", choiceImages = [], onSteps } = {},
+  { timeoutMs = 12000, imageUrl = "", choiceImages = [], onSteps } = {},
 ) {
   const labels = (choices || []).map((choice) => String(choice || "").trim());
   const validLabels = labels.filter(Boolean);
@@ -216,55 +218,51 @@ export function lookupSearchAnswer(
     return searchInflight.get(cacheKey);
   }
 
-  const params = new URLSearchParams({
-    question: searchQuestion,
-    choices: JSON.stringify(labels),
-  });
-  if (normalizedImageUrl) {
-    params.set("imageUrl", normalizedImageUrl);
-  }
-  if (normalizedChoiceImages.length) {
-    params.set("choiceImages", JSON.stringify(normalizedChoiceImages));
-  }
-
   const hasImages = Boolean(normalizedImageUrl || normalizedChoiceImages.length);
 
   const promise = Promise.race([
-    fetch(`/api/search?${params.toString()}`)
-      .then((response) => response.json().catch(() => ({})))
-      .then((data) => {
-        if (onSteps && Array.isArray(data?.steps)) {
-          onSteps(data.steps);
-        }
+    (async () => {
+      let inlineImages = null;
+      if (hasImages) {
+        inlineImages = await buildInlineImages(normalizedImageUrl, normalizedChoiceImages);
+      }
 
-        const choiceIndex = Number(data?.choiceIndex);
-        const margin = Number(data?.margin) || 0;
-        const source = data?.source || "google";
-        const minMargin =
-          source === "vision" ? 10 : hasImages ? 3 : 5;
+      const response = await fetch("/api/stormy-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: searchQuestion,
+          choices: labels,
+          imageUrl: normalizedImageUrl,
+          choiceImages: normalizedChoiceImages,
+          inlineImages,
+        }),
+      });
 
-        if (
-          !Number.isFinite(choiceIndex) ||
-          choiceIndex < 0 ||
-          choiceIndex >= labels.length ||
-          margin < minMargin
-        ) {
-          return {
-            choiceIndex: null,
-            textAnswer: null,
-            confidence: Number(data?.confidence) || 0,
-            margin,
-            source,
-            queries: Array.isArray(data?.queries) ? data.queries : [],
-            snippetCount: Number(data?.snippetCount) || 0,
-            usedImage: Boolean(data?.usedImage),
-            steps: Array.isArray(data?.steps) ? data.steps : [],
-            imageDescription: data?.imageDescription || "",
-          };
-        }
+      const data = await response.json().catch(() => ({}));
+      if (onSteps && Array.isArray(data?.steps)) {
+        onSteps(data.steps);
+      }
+
+      const choiceIndex = Number(data?.choiceIndex);
+      const margin = Number(data?.margin) || 0;
+      const source = data?.source || "stormy";
+      const minMargin =
+        source === "vision" || source === "stormy-ai" || source === "stormy-vision-inline"
+          ? 8
+          : hasImages
+            ? 2
+            : 4;
+
+      if (
+        !Number.isFinite(choiceIndex) ||
+        choiceIndex < 0 ||
+        choiceIndex >= labels.length ||
+        margin < minMargin
+      ) {
         return {
-          choiceIndex,
-          textAnswer: data?.textAnswer || labels[choiceIndex],
+          choiceIndex: null,
+          textAnswer: null,
           confidence: Number(data?.confidence) || 0,
           margin,
           source,
@@ -274,8 +272,20 @@ export function lookupSearchAnswer(
           steps: Array.isArray(data?.steps) ? data.steps : [],
           imageDescription: data?.imageDescription || "",
         };
-      })
-      .catch(() => null),
+      }
+      return {
+        choiceIndex,
+        textAnswer: data?.textAnswer || labels[choiceIndex],
+        confidence: Number(data?.confidence) || 0,
+        margin,
+        source,
+        queries: Array.isArray(data?.queries) ? data.queries : [],
+        snippetCount: Number(data?.snippetCount) || 0,
+        usedImage: Boolean(data?.usedImage),
+        steps: Array.isArray(data?.steps) ? data.steps : [],
+        imageDescription: data?.imageDescription || "",
+      };
+    })().catch(() => null),
     new Promise((resolve) => {
       setTimeout(() => resolve(null), timeoutMs);
     }),
