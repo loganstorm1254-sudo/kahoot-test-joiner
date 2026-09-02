@@ -151,7 +151,7 @@ async function onJoin() {
 
   const nicknames = buildNicknames(count, baseName, useRandomNames);
   setConnected(true);
-  setStatus(`Joining ${count} player${count === 1 ? "" : "s"}…`);
+  setStatus(`Joining ${count} player${count === 1 ? "" : "s"}… (can take up to a minute)`);
   logActivity(`Starting Blooket batch: ${count} player${count === 1 ? "" : "s"}, game ${gameId}`);
 
   try {
