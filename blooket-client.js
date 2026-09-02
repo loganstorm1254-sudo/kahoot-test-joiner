@@ -53,6 +53,32 @@ export function isValidBlooketGameId(value) {
   return digits.length >= 5 && digits.length <= 7;
 }
 
+export async function requestBlooketJoins(gameId, names) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+  try {
+    const response = await fetch("/api/blooket-join", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: gameId, names }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!Array.isArray(data.joins)) {
+      throw new Error(data.msg || "Join request failed.");
+    }
+    return data;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Join timed out — try fewer players or retry.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export class BlooketJoiner {
   constructor() {
     this.reset();
@@ -83,7 +109,17 @@ export class BlooketJoiner {
     this.onActivity({ steps: [{ message, level }] });
   }
 
-  async start({ gameId, nickname, autoAnswer, onJoined, onError, onStatus, onActivity, blook }) {
+  async connect({
+    gameId,
+    nickname,
+    joinData,
+    autoAnswer,
+    onJoined,
+    onError,
+    onStatus,
+    onActivity,
+    blook,
+  }) {
     this.stop(false);
     this.reset();
 
@@ -99,21 +135,16 @@ export class BlooketJoiner {
 
     if (!isValidBlooketGameId(this.gameId)) {
       this.onError("Enter a valid 5–7 digit game ID.");
-      return;
+      return false;
+    }
+
+    if (!joinData?.success || !joinData.fbToken || !joinData.fbShardURL) {
+      this.onError(joinData?.msg || "Could not join that game.");
+      return false;
     }
 
     try {
-      this.status(`Joining game ${this.gameId}…`);
-      const joinResponse = await fetch("/api/blooket-join", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: this.gameId, name: this.nickname }),
-      });
-      const joinData = await joinResponse.json().catch(() => ({}));
-
-      if (!joinData.success) {
-        throw new Error(joinData.msg || "Could not join that game.");
-      }
+      this.status(`Joining as ${this.nickname}…`);
 
       const app = initializeApp(
         {
@@ -141,9 +172,11 @@ export class BlooketJoiner {
       if (this.autoAnswer) {
         this.watchQuestions();
       }
+      return true;
     } catch (error) {
       this.onError(error.message || "Join failed.");
       this.stop(false);
+      return false;
     }
   }
 

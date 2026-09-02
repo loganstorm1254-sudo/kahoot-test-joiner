@@ -1,5 +1,8 @@
 {
   "name": "kahoot-test-joiner",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "got-scraping": "^4.1.2"
+  }
 }

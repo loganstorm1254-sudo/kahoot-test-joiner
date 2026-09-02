@@ -1,5 +1,4 @@
-const USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+import { joinBlooketPlayers } from "../lib/blooket-server-join.js";
 
 function corsHeaders() {
   return {
@@ -10,6 +9,14 @@ function corsHeaders() {
   };
 }
 
+function normalizeNames(body) {
+  if (Array.isArray(body.names)) {
+    return body.names.map((name) => String(name || "").trim()).filter(Boolean);
+  }
+  const single = String(body.name || "").trim();
+  return single ? [single] : [];
+}
+
 export async function OPTIONS() {
   return new Response(null, { headers: corsHeaders() });
 }
@@ -18,33 +25,40 @@ export async function PUT(request) {
   try {
     const body = await request.json().catch(() => ({}));
     const id = String(body.id || "").trim();
-    const name = String(body.name || "").trim();
+    const names = normalizeNames(body);
 
-    if (!id || !name) {
+    if (!id || !names.length) {
       return Response.json(
-        { success: false, msg: "Game ID and name are required." },
+        { success: false, msg: "Game ID and at least one name are required." },
         { status: 400, headers: corsHeaders() },
       );
     }
 
-    const response = await fetch("https://fb.blooket.com/c/firebase/join", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": USER_AGENT,
-        Accept: "application/json",
-      },
-      body: JSON.stringify({ id, name }),
-    });
+    const joins = await joinBlooketPlayers(id, names);
+    const successCount = joins.filter((entry) => entry.success).length;
 
-    const data = await response.json().catch(() => ({}));
-    return Response.json(data, {
-      status: response.ok ? 200 : response.status,
-      headers: corsHeaders(),
-    });
+    return Response.json(
+      {
+        success: successCount > 0,
+        joins,
+        successCount,
+        totalCount: joins.length,
+        msg:
+          successCount === joins.length
+            ? undefined
+            : successCount === 0
+              ? joins[0]?.msg || "Could not join that game."
+              : `Joined ${successCount}/${joins.length} players.`,
+      },
+      { headers: corsHeaders() },
+    );
   } catch (error) {
     return Response.json(
-      { success: false, msg: error.message || "Join proxy failed." },
+      {
+        success: false,
+        msg: error.message || "Join failed.",
+        joins: [],
+      },
       { status: 500, headers: corsHeaders() },
     );
   }

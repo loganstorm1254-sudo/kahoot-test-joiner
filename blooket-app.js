@@ -1,20 +1,17 @@
-import { BlooketJoiner, isValidBlooketGameId, normalizeBlooketGameId } from "./blooket-client.js";
+import {
+  BlooketJoiner,
+  isValidBlooketGameId,
+  normalizeBlooketGameId,
+  requestBlooketJoins,
+} from "./blooket-client.js";
 import { generateRandomName, generateUniqueNames } from "./name-generator.js";
 
 const BLOOKET_SECRET_CODE = "1254";
-const MAX_CONCURRENT_JOINS = 4;
-const JOIN_TIMEOUT_MS = 30000;
-const JOIN_RETRY_ATTEMPTS = 2;
-const JOIN_LAUNCH_DELAY_MS = 350;
 const MAX_PLAYERS = 44;
 
 let session = 0;
 let joiners = [];
-let targetCount = 0;
-let joinedCount = 0;
-let failedCount = 0;
 let connected = false;
-let lastError = "";
 
 let gameIdInput;
 let nameInput;
@@ -124,15 +121,6 @@ function logActivity(message, { level = "info", source = "system" } = {}) {
   activityLogEl.scrollTop = activityLogEl.scrollHeight;
 }
 
-function logSteps(steps, source) {
-  if (!Array.isArray(steps)) {
-    return;
-  }
-  for (const step of steps) {
-    logActivity(step?.message || String(step), { level: step?.level || "info", source });
-  }
-}
-
 function buildNicknames(count, baseName, useRandomNames) {
   if (useRandomNames) {
     return generateUniqueNames(count);
@@ -140,168 +128,7 @@ function buildNicknames(count, baseName, useRandomNames) {
   return Array.from({ length: count }, (_, index) => `${baseName}${index + 1}`);
 }
 
-function updateBatchStatus() {
-  if (targetCount === 1) {
-    if (joinedCount === 1) {
-      setStatus("Joined 1 player — check the host lobby");
-    } else if (failedCount === 1) {
-      setStatus(lastError || "Failed to join");
-    } else {
-      setStatus("Joining...");
-    }
-    return;
-  }
-  let message = `Joined ${joinedCount}/${targetCount} players`;
-  if (failedCount > 0) {
-    message += ` (${failedCount} failed)`;
-    if (lastError) {
-      message += `: ${lastError}`;
-    }
-  }
-  setStatus(message);
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function attemptJoin(activeSession, gameId, nickname, autoAnswer) {
-  return new Promise((resolve) => {
-    const joiner = new BlooketJoiner();
-    let settled = false;
-    let joinTimeout;
-
-    const settle = (result) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(joinTimeout);
-      resolve({ joiner, ...result });
-    };
-
-    joiner.start({
-      gameId,
-      nickname,
-      autoAnswer,
-      onJoined: () => {
-        if (activeSession !== session) {
-          settle({ success: false, aborted: true });
-          return;
-        }
-        joinedCount += 1;
-        updateBatchStatus();
-        settle({ success: true });
-      },
-      onError: (message) => {
-        if (activeSession !== session) {
-          settle({ success: false, aborted: true });
-          return;
-        }
-        logActivity(message, { source: nickname, level: "error" });
-        settle({ success: false, message });
-      },
-      onStatus: (message) => {
-        if (activeSession !== session) {
-          return;
-        }
-        logActivity(message, { source: nickname });
-        if (targetCount === 1) {
-          setStatus(message);
-        }
-      },
-      onActivity: ({ steps }) => {
-        if (activeSession !== session) {
-          return;
-        }
-        logSteps(steps, nickname);
-      },
-    });
-
-    joinTimeout = setTimeout(() => {
-      if (joiner.joined) {
-        settle({ success: true });
-        return;
-      }
-      joiner.stop();
-      settle({ success: false, message: "Join timed out" });
-    }, JOIN_TIMEOUT_MS);
-  });
-}
-
-async function joinPlayerWithRetry(activeSession, gameId, nickname, autoAnswer) {
-  for (let attempt = 1; attempt <= JOIN_RETRY_ATTEMPTS; attempt += 1) {
-    if (activeSession !== session) {
-      return null;
-    }
-    const result = await attemptJoin(activeSession, gameId, nickname, autoAnswer);
-    if (activeSession !== session || result.aborted) {
-      return null;
-    }
-    if (result.success) {
-      return result.joiner;
-    }
-    lastError = result.message || "Failed to join";
-    if (attempt < JOIN_RETRY_ATTEMPTS) {
-      await sleep(JOIN_LAUNCH_DELAY_MS * attempt);
-    } else {
-      failedCount += 1;
-      updateBatchStatus();
-      return null;
-    }
-  }
-  return null;
-}
-
-async function startPlayers(activeSession, gameId, nicknames, autoAnswer) {
-  let nextIndex = 0;
-  let inFlight = 0;
-
-  await new Promise((resolveAll) => {
-    const pump = () => {
-      if (activeSession !== session) {
-        resolveAll();
-        return;
-      }
-
-      while (inFlight < MAX_CONCURRENT_JOINS && nextIndex < nicknames.length) {
-        const nickname = nicknames[nextIndex];
-        nextIndex += 1;
-        inFlight += 1;
-
-        joinPlayerWithRetry(activeSession, gameId, nickname, autoAnswer)
-          .then((joiner) => {
-            if (joiner) {
-              joiners.push(joiner);
-            }
-          })
-          .finally(async () => {
-            inFlight -= 1;
-            if (activeSession !== session) {
-              resolveAll();
-              return;
-            }
-            if (nextIndex < nicknames.length) {
-              await sleep(JOIN_LAUNCH_DELAY_MS);
-            }
-            if (nextIndex >= nicknames.length && inFlight === 0) {
-              resolveAll();
-            } else {
-              pump();
-            }
-          });
-      }
-
-      if (nextIndex >= nicknames.length && inFlight === 0) {
-        resolveAll();
-      }
-    };
-
-    pump();
-  });
-}
-
-function onJoin() {
+async function onJoin() {
   if (connected) {
     return;
   }
@@ -319,18 +146,78 @@ function onJoin() {
 
   session += 1;
   const activeSession = session;
-  targetCount = count;
-  joinedCount = 0;
-  failedCount = 0;
-  lastError = "";
   joiners = [];
   clearBlooketLog();
 
   const nicknames = buildNicknames(count, baseName, useRandomNames);
-  logActivity(`Starting Blooket batch: ${count} player${count === 1 ? "" : "s"}, game ${gameId}`);
   setConnected(true);
-  setStatus(`Joining ${count} player${count === 1 ? "" : "s"}...`);
-  startPlayers(activeSession, gameId, nicknames, autoAnswer);
+  setStatus(`Joining ${count} player${count === 1 ? "" : "s"}…`);
+  logActivity(`Starting Blooket batch: ${count} player${count === 1 ? "" : "s"}, game ${gameId}`);
+
+  try {
+    const batch = await requestBlooketJoins(gameId, nicknames);
+    if (activeSession !== session) {
+      return;
+    }
+
+    let joinedCount = 0;
+    let failedCount = 0;
+
+    for (const entry of batch.joins) {
+      if (activeSession !== session) {
+        return;
+      }
+
+      const joiner = new BlooketJoiner();
+      const ok = await joiner.connect({
+        gameId,
+        nickname: entry.name,
+        joinData: entry,
+        autoAnswer,
+        onJoined: () => {
+          joinedCount += 1;
+          setStatus(`Joined ${joinedCount}/${count} players`);
+        },
+        onError: (message) => {
+          failedCount += 1;
+          logActivity(message, { source: entry.name, level: "error" });
+        },
+        onStatus: (message) => logActivity(message, { source: entry.name }),
+        onActivity: ({ steps }) => {
+          for (const step of steps || []) {
+            logActivity(step?.message || String(step), {
+              source: entry.name,
+              level: step?.level || "info",
+            });
+          }
+        },
+      });
+
+      if (ok) {
+        joiners.push(joiner);
+      } else if (!entry.success) {
+        failedCount += 1;
+        logActivity(entry.msg || "Could not join that game.", { source: entry.name, level: "error" });
+      }
+    }
+
+    if (joinedCount === count) {
+      setStatus(`Joined ${joinedCount} player${joinedCount === 1 ? "" : "s"} — check the host lobby`);
+    } else if (joinedCount > 0) {
+      setStatus(`Joined ${joinedCount}/${count} players (${failedCount} failed)`);
+    } else {
+      setStatus(batch.msg || "Failed to join");
+    }
+  } catch (error) {
+    if (activeSession === session) {
+      logActivity(error.message || "Join failed.", { level: "error" });
+      setStatus(error.message || "Join failed.");
+    }
+  } finally {
+    if (activeSession === session) {
+      setConnected(joiners.length > 0);
+    }
+  }
 }
 
 function onDisconnect() {
