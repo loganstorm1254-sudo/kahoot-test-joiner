@@ -26,6 +26,8 @@ const SLOTS = [
   },
 ];
 
+let adsStarted = false;
+
 function mountBanner(root, { key, width, height }) {
   if (!root || root.dataset.stormyAdReady === "1") {
     return Promise.resolve();
@@ -39,6 +41,12 @@ function mountBanner(root, { key, width, height }) {
 
   root.dataset.stormyAdReady = "1";
   root.hidden = false;
+
+  const slot = document.createElement("div");
+  slot.className = "stormy-ad-slot";
+  slot.style.width = `${width}px`;
+  slot.style.minHeight = `${height}px`;
+  root.appendChild(slot);
 
   const options = document.createElement("script");
   options.textContent = `atOptions = {
@@ -60,8 +68,13 @@ function mountBanner(root, { key, width, height }) {
   });
 }
 
-/** Left 160×600, right 160×300, bottom 728×90 on the batch joiner. */
+/** Left 160×600, right 160×300, bottom 728×90 — loads when joiner is visible. */
 export async function initStormyAd() {
+  const joiner = document.getElementById("view-joiner");
+  if (!joiner || joiner.hidden) {
+    return;
+  }
+
   for (const slot of SLOTS) {
     const root = document.getElementById(slot.id);
     if (!root) {
@@ -69,9 +82,19 @@ export async function initStormyAd() {
     }
     if (!String(slot.key || "").trim()) {
       root.hidden = true;
-      root.replaceChildren();
       continue;
     }
     await mountBanner(root, slot);
   }
+  adsStarted = true;
+}
+
+/** Call when opening the batch joiner so ads render in a visible panel. */
+export function initStormyAdWhenJoinerOpens() {
+  if (adsStarted) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    void initStormyAd();
+  });
 }

@@ -14,7 +14,7 @@ import {
 import { CLIENT_BUILD } from "./version.js";
 import { appendActivityLog, appendActivitySteps, clearActivityLog } from "./activity-log.js";
 import { stormyFetch } from "./site-fetch.js";
-import { initStormyAd } from "./ads.js";
+import { initStormyAdWhenJoinerOpens } from "./ads.js";
 
 const pinInput = document.getElementById("pin");
 const nameInput = document.getElementById("name");
@@ -793,6 +793,10 @@ function setActiveView(viewName) {
   };
   document.documentElement.style.background = backgrounds[viewName] || "#2f1d5c";
   resetQuickExitBuffer();
+
+  if (viewName === VIEW.KAHOOT_JOINER) {
+    initStormyAdWhenJoinerOpens();
+  }
 }
 
 function setView(showJoiner) {
@@ -956,7 +960,6 @@ function boot() {
     setInterval(() => {
       checkForUpdates();
     }, 30000);
-    initStormyAd();
   } catch (error) {
     console.error("App failed to start:", error);
   }
