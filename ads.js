@@ -1,41 +1,82 @@
-import { ADSTERRA_KEY, ADSTERRA_INVOKE_HOST } from "./ads-config.js";
+import {
+  ADSTERRA_KEY,
+  ADSTERRA_KEY_LEFT,
+  ADSTERRA_KEY_RIGHT,
+  ADSTERRA_INVOKE_HOST,
+} from "./ads-config.js";
 
-function ready() {
-  return Boolean(String(ADSTERRA_KEY || "").trim());
+const SLOTS = [
+  {
+    id: "stormy-ad-left",
+    key: ADSTERRA_KEY_LEFT,
+    width: 160,
+    height: 600,
+  },
+  {
+    id: "stormy-ad-right",
+    key: ADSTERRA_KEY_RIGHT,
+    width: 160,
+    height: 600,
+  },
+  {
+    id: "stormy-ad",
+    key: ADSTERRA_KEY,
+    width: 728,
+    height: 90,
+  },
+];
+
+function resolveKey(key) {
+  const value = String(key || ADSTERRA_KEY || "").trim();
+  return value || null;
 }
 
-function mountBanner(root) {
+function mountBanner(root, { key, width, height }) {
   if (!root || root.dataset.stormyAdReady === "1") {
-    return;
+    return Promise.resolve();
   }
+
+  const adKey = resolveKey(key);
+  if (!adKey) {
+    root.hidden = true;
+    return Promise.resolve();
+  }
+
   root.dataset.stormyAdReady = "1";
   root.hidden = false;
 
-  const key = ADSTERRA_KEY.trim();
-  window.atOptions = {
-    key,
+  const options = document.createElement("script");
+  options.textContent = `atOptions = {
+    key: ${JSON.stringify(adKey)},
     format: "iframe",
-    height: 90,
-    width: 728,
-    params: {},
-  };
+    height: ${height},
+    width: ${width},
+    params: {}
+  };`;
+  root.appendChild(options);
 
-  const script = document.createElement("script");
-  script.async = true;
-  script.src = `https://${ADSTERRA_INVOKE_HOST}/${encodeURIComponent(key)}/invoke.js`;
-  root.appendChild(script);
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = `https://${ADSTERRA_INVOKE_HOST}/${encodeURIComponent(adKey)}/invoke.js`;
+    script.onload = () => resolve();
+    script.onerror = () => resolve();
+    root.appendChild(script);
+  });
 }
 
-/** One banner at the bottom of the joiner — no popunders from our side. */
-export function initStormyAd() {
-  const root = document.getElementById("stormy-ad");
-  if (!root) {
-    return;
+/** Banners: left + right of joiner console, plus bottom strip. */
+export async function initStormyAd() {
+  for (const slot of SLOTS) {
+    const root = document.getElementById(slot.id);
+    if (!root) {
+      continue;
+    }
+    if (!resolveKey(slot.key)) {
+      root.hidden = true;
+      root.replaceChildren();
+      continue;
+    }
+    await mountBanner(root, slot);
   }
-  if (!ready()) {
-    root.hidden = true;
-    root.replaceChildren();
-    return;
-  }
-  mountBanner(root);
 }
