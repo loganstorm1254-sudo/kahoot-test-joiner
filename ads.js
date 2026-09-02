@@ -2,8 +2,12 @@ import { AD_CLIENT, AD_SLOT } from "./ads-config.js";
 
 const ADS_SCRIPT = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js";
 
-function configured() {
-  return Boolean(String(AD_CLIENT || "").trim() && String(AD_SLOT || "").trim());
+function hasClient() {
+  return Boolean(String(AD_CLIENT || "").trim());
+}
+
+function hasSlot() {
+  return Boolean(String(AD_SLOT || "").trim());
 }
 
 function mountSlot(root) {
@@ -52,7 +56,7 @@ export async function initStormyAd() {
   if (!root) {
     return;
   }
-  if (!configured()) {
+  if (!hasClient() || !hasSlot()) {
     root.hidden = true;
     root.replaceChildren();
     return;
