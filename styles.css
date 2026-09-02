@@ -716,6 +716,166 @@ input[type="text"]:focus {
   color: #15803d;
 }
 
+/* —— Blooket play decoy —— */
+
+.blooket-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #7ec8ff 0%, #59b9ff 45%, #4aa8f5 100%);
+  font-family: "Nunito", "Montserrat", var(--font);
+}
+
+.blooket-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 12px rgba(15, 77, 196, 0.12);
+}
+
+.blooket-logo-link {
+  display: inline-flex;
+  text-decoration: none;
+}
+
+.blooket-logo-img {
+  display: block;
+  height: 34px;
+  width: auto;
+}
+
+.blooket-topnav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.blooket-nav-link {
+  text-decoration: none;
+  color: #0b63f6;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 8px 14px;
+  border-radius: 8px;
+}
+
+.blooket-nav-link-primary {
+  background: #0b63f6;
+  color: #ffffff;
+}
+
+.blooket-page {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px 48px;
+}
+
+.blooket-hero-card {
+  width: min(100%, 420px);
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 32px 28px 28px;
+  box-shadow: 0 18px 40px rgba(15, 77, 196, 0.18);
+  text-align: center;
+}
+
+.blooket-title {
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 800;
+  color: #123d8f;
+}
+
+.blooket-subtitle {
+  margin: 0 0 24px;
+  color: #5b6f8f;
+  font-size: 15px;
+}
+
+.blooket-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.blooket-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #123d8f;
+  letter-spacing: 0.02em;
+}
+
+.blooket-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid #d7e6ff;
+  border-radius: 12px;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.12em;
+  background: #f7fbff;
+}
+
+.blooket-input:focus {
+  outline: none;
+  border-color: #0b63f6;
+  box-shadow: 0 0 0 3px rgba(11, 99, 246, 0.15);
+}
+
+.blooket-button {
+  margin-top: 4px;
+  padding: 14px 18px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #2f7dff 0%, #0b63f6 100%);
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 800;
+  box-shadow: 0 8px 0 #084db8;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.blooket-button:hover {
+  transform: translateY(1px);
+  box-shadow: 0 7px 0 #084db8;
+}
+
+.blooket-button:active {
+  transform: translateY(4px);
+  box-shadow: 0 4px 0 #084db8;
+}
+
+.blooket-status {
+  min-height: 1.2rem;
+  margin: 14px 0 0;
+  color: #c2410c;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.joiner-page-blooket {
+  background: linear-gradient(160deg, #0f4dc4 0%, #2f7dff 55%, #59b9ff 100%);
+}
+
+.joiner-card-blooket .joiner-eyebrow {
+  color: #0b63f6;
+}
+
+.button-blooket {
+  background: #0b63f6;
+  border-color: #0b63f6;
+}
+
+.button-blooket:hover:not(:disabled) {
+  background: #084fd0;
+}
+
 @media (max-width: 480px) {
   .kahoot-card {
     padding: 28px 20px 22px;

@@ -13,6 +13,7 @@ import {
 } from "./quiz-answers.js";
 import { CLIENT_BUILD } from "./version.js";
 import { appendActivityLog, appendActivitySteps, clearActivityLog } from "./activity-log.js";
+import { initBlooketJoiner, isBlooketSecretCode } from "./blooket-app.js";
 
 const pinInput = document.getElementById("pin");
 const nameInput = document.getElementById("name");
@@ -721,12 +722,26 @@ if (clearLogButton) {
 
 const viewDecoy = document.getElementById("view-decoy");
 const viewJoiner = document.getElementById("view-joiner");
+const viewBlooketDecoy = document.getElementById("view-blooket-decoy");
+const viewBlooketJoiner = document.getElementById("view-blooket-joiner");
 const decoyForm = document.getElementById("decoy-form");
 const decoyPinInput = document.getElementById("decoy-pin");
 const decoyStatusEl = document.getElementById("decoy-status");
 const decoyEnterButton = document.getElementById("decoy-enter");
+const blooketDecoyForm = document.getElementById("blooket-decoy-form");
+const blooketDecoyGameIdInput = document.getElementById("blooket-decoy-game-id");
+const blooketDecoyStatusEl = document.getElementById("blooket-decoy-status");
+const blooketDecoyJoinButton = document.getElementById("blooket-decoy-join");
+
+const VIEW = {
+  KAHOOT_DECOY: "kahoot-decoy",
+  KAHOOT_JOINER: "kahoot-joiner",
+  BLOOKET_DECOY: "blooket-decoy",
+  BLOOKET_JOINER: "blooket-joiner",
+};
 
 let showingJoiner = false;
+let activeView = VIEW.KAHOOT_DECOY;
 let quickExitBuffer = "";
 let quickExitTimer = null;
 const QUICK_EXIT_SEQUENCE = "qw";
@@ -749,26 +764,46 @@ function resetQuickExitBuffer() {
   }
 }
 
-function setView(showJoiner) {
-  showingJoiner = showJoiner;
+function setActiveView(viewName) {
+  activeView = viewName;
+  showingJoiner = viewName === VIEW.KAHOOT_JOINER;
 
-  if (viewDecoy) {
-    viewDecoy.classList.toggle("is-hidden", showJoiner);
-    viewDecoy.hidden = showJoiner;
+  const views = {
+    [VIEW.KAHOOT_DECOY]: viewDecoy,
+    [VIEW.KAHOOT_JOINER]: viewJoiner,
+    [VIEW.BLOOKET_DECOY]: viewBlooketDecoy,
+    [VIEW.BLOOKET_JOINER]: viewBlooketJoiner,
+  };
+
+  for (const [name, element] of Object.entries(views)) {
+    if (!element) {
+      continue;
+    }
+    const show = name === viewName;
+    element.classList.toggle("is-hidden", !show);
+    element.hidden = !show;
   }
 
-  if (viewJoiner) {
-    viewJoiner.classList.toggle("is-hidden", !showJoiner);
-    viewJoiner.hidden = !showJoiner;
-  }
+  const titles = {
+    [VIEW.KAHOOT_DECOY]: "Enter Game PIN - Kahoot!",
+    [VIEW.KAHOOT_JOINER]: "Test Joiner",
+    [VIEW.BLOOKET_DECOY]: "Play Blooket",
+    [VIEW.BLOOKET_JOINER]: "Blooket Test Joiner",
+  };
+  document.title = titles[viewName] || titles[VIEW.KAHOOT_DECOY];
 
-  document.title = showJoiner ? "Test Joiner" : "Enter Game PIN - Kahoot!";
-  document.documentElement.style.background = showJoiner ? "#1a1033" : "#2f1d5c";
+  const backgrounds = {
+    [VIEW.KAHOOT_DECOY]: "#2f1d5c",
+    [VIEW.KAHOOT_JOINER]: "#1a1033",
+    [VIEW.BLOOKET_DECOY]: "#59b9ff",
+    [VIEW.BLOOKET_JOINER]: "#0f4dc4",
+  };
+  document.documentElement.style.background = backgrounds[viewName] || "#2f1d5c";
   resetQuickExitBuffer();
 }
 
-function toggleView() {
-  setView(!showingJoiner);
+function setView(showJoiner) {
+  setActiveView(showJoiner ? VIEW.KAHOOT_JOINER : VIEW.KAHOOT_DECOY);
 }
 
 function handleQuickExitKey(event) {
@@ -799,7 +834,9 @@ function handleQuickExitKey(event) {
 
   if (quickExitBuffer === QUICK_EXIT_SEQUENCE) {
     resetQuickExitBuffer();
-    toggleView();
+    if (activeView === VIEW.KAHOOT_DECOY || activeView === VIEW.KAHOOT_JOINER) {
+      setActiveView(activeView === VIEW.KAHOOT_JOINER ? VIEW.KAHOOT_DECOY : VIEW.KAHOOT_JOINER);
+    }
   }
 }
 
@@ -885,11 +922,62 @@ async function onDecoySubmit(event) {
 }
 
 function openJoinerView() {
-  setView(true);
+  setActiveView(VIEW.KAHOOT_JOINER);
+}
+
+function openBlooketDecoyView() {
+  setActiveView(VIEW.BLOOKET_DECOY);
+}
+
+function openBlooketJoinerView() {
+  setActiveView(VIEW.BLOOKET_JOINER);
+}
+
+function normalizeBlooketDecoyGameId(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function onBlooketDecoyGameIdInput() {
+  if (!blooketDecoyGameIdInput) {
+    return;
+  }
+  const digits = normalizeBlooketDecoyGameId(blooketDecoyGameIdInput.value);
+  if (digits !== blooketDecoyGameIdInput.value.replace(/\s/g, "")) {
+    blooketDecoyGameIdInput.value = digits;
+  }
+  if (isBlooketSecretCode(digits)) {
+    openBlooketJoinerView();
+  }
+}
+
+function getRealBlooketJoinUrl(gameId) {
+  return `https://play.blooket.com/play?id=${encodeURIComponent(gameId)}`;
+}
+
+async function onBlooketDecoySubmit(event) {
+  event.preventDefault();
+  if (!blooketDecoyGameIdInput) {
+    return;
+  }
+
+  const gameId = normalizeBlooketDecoyGameId(blooketDecoyGameIdInput.value);
+  if (isBlooketSecretCode(gameId)) {
+    openBlooketJoinerView();
+    return;
+  }
+
+  if (gameId.length < 5) {
+    if (blooketDecoyStatusEl) {
+      blooketDecoyStatusEl.textContent = "Please enter a valid game ID.";
+    }
+    return;
+  }
+
+  window.location.assign(getRealBlooketJoinUrl(gameId));
 }
 
 function initShell() {
-  setView(false);
+  setActiveView(VIEW.KAHOOT_DECOY);
   document.addEventListener("keydown", handleQuickExitKey);
 
   const makeNavButton = document.getElementById("open-joiner");
@@ -900,6 +988,19 @@ function initShell() {
     });
   }
 
+  const presentNavButton = document.getElementById("open-blooket");
+  if (presentNavButton) {
+    presentNavButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      openBlooketDecoyView();
+    });
+  }
+
+  document.getElementById("blooket-logo-home")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    setActiveView(VIEW.KAHOOT_DECOY);
+  });
+
   if (decoyForm) {
     decoyForm.addEventListener("submit", onDecoySubmit);
   }
@@ -907,6 +1008,16 @@ function initShell() {
     decoyPinInput.addEventListener("input", onDecoyPinInput);
     decoyPinInput.addEventListener("blur", onDecoyPinInput);
   }
+
+  if (blooketDecoyForm) {
+    blooketDecoyForm.addEventListener("submit", onBlooketDecoySubmit);
+  }
+  if (blooketDecoyGameIdInput) {
+    blooketDecoyGameIdInput.addEventListener("input", onBlooketDecoyGameIdInput);
+    blooketDecoyGameIdInput.addEventListener("blur", onBlooketDecoyGameIdInput);
+  }
+
+  initBlooketJoiner();
 }
 
 setPlayerCount(1);

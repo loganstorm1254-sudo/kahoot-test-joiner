@@ -9,6 +9,9 @@
     "api/search.js": {
       "maxDuration": 30
     },
+    "api/blooket-join.js": {
+      "maxDuration": 30
+    },
     "api/version.js": {
       "maxDuration": 10
     }
@@ -42,7 +45,7 @@
       ]
     },
     {
-      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|version)\\.js",
+      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|blooket-client|blooket-app|version)\\.js",
       "headers": [
         {
           "key": "Cache-Control",

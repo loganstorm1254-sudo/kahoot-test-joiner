@@ -1,0 +1,233 @@
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import {
+  getDatabase,
+  ref,
+  set,
+  update,
+  onValue,
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const BLOOKET_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCA-cTOnX19f6LFnDVVsHXya3k6ByP_MnU",
+  authDomain: "blooket-2020.firebaseapp.com",
+  projectId: "blooket-2020",
+  storageBucket: "blooket-2020.appspot.com",
+  messagingSenderId: "741533559105",
+  appId: "1:741533559105:web:b8cbb10e6123f2913519c0",
+  measurementId: "G-S3H5NGN10Z",
+};
+
+const DEFAULT_BLOOKS = [
+  "Dog",
+  "Cat",
+  "Chicken",
+  "Cow",
+  "Pig",
+  "Sheep",
+  "Duck",
+  "Horse",
+  "Alpaca",
+  "Walrus",
+  "Wolf",
+  "Bear",
+  "Fox",
+  "Rabbit",
+  "Owl",
+];
+
+function randomBlook() {
+  return DEFAULT_BLOOKS[Math.floor(Math.random() * DEFAULT_BLOOKS.length)];
+}
+
+function sanitizeAppName(name) {
+  return `blooket-${String(name).replace(/[^a-zA-Z0-9]/g, "_").slice(0, 24)}-${Date.now()}`;
+}
+
+export function normalizeBlooketGameId(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+export function isValidBlooketGameId(value) {
+  const digits = normalizeBlooketGameId(value);
+  return digits.length >= 5 && digits.length <= 7;
+}
+
+export class BlooketJoiner {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.gameId = "";
+    this.nickname = "";
+    this.autoAnswer = false;
+    this.onJoined = () => {};
+    this.onError = () => {};
+    this.onStatus = () => {};
+    this.onActivity = () => {};
+    this.joined = false;
+    this.closed = false;
+    this.firebaseApp = null;
+    this.database = null;
+    this.questionUnsubscribe = null;
+    this.lastQuestionKey = "";
+    this.blook = "Dog";
+  }
+
+  status(message) {
+    this.onStatus(message);
+  }
+
+  log(message, level = "info") {
+    this.onActivity({ steps: [{ message, level }] });
+  }
+
+  async start({ gameId, nickname, autoAnswer, onJoined, onError, onStatus, onActivity, blook }) {
+    this.stop(false);
+    this.reset();
+
+    this.gameId = normalizeBlooketGameId(gameId);
+    this.nickname = String(nickname || "bot").trim().slice(0, 16) || "bot";
+    this.autoAnswer = Boolean(autoAnswer);
+    this.blook = blook || randomBlook();
+    this.onJoined = onJoined || (() => {});
+    this.onError = onError || (() => {});
+    this.onStatus = onStatus || (() => {});
+    this.onActivity = onActivity || (() => {});
+    this.closed = false;
+
+    if (!isValidBlooketGameId(this.gameId)) {
+      this.onError("Enter a valid 5–7 digit game ID.");
+      return;
+    }
+
+    try {
+      this.status(`Joining game ${this.gameId}…`);
+      const joinResponse = await fetch("/api/blooket-join", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: this.gameId, name: this.nickname }),
+      });
+      const joinData = await joinResponse.json().catch(() => ({}));
+
+      if (!joinData.success) {
+        throw new Error(joinData.msg || "Could not join that game.");
+      }
+
+      const app = initializeApp(
+        {
+          ...BLOOKET_FIREBASE_CONFIG,
+          databaseURL: joinData.fbShardURL,
+        },
+        sanitizeAppName(this.nickname),
+      );
+      this.firebaseApp = app;
+      const auth = getAuth(app);
+      await signInWithCustomToken(auth, joinData.fbToken);
+
+      const db = getDatabase(app);
+      this.database = db;
+
+      await set(ref(db, `${this.gameId}/c/${this.nickname}`), {
+        b: this.blook,
+      });
+
+      this.joined = true;
+      this.status(`Joined as ${this.nickname} (${this.blook})`);
+      this.log(`Joined game ${this.gameId} as ${this.nickname}`, "success");
+      this.onJoined(this.nickname);
+
+      if (this.autoAnswer) {
+        this.watchQuestions();
+      }
+    } catch (error) {
+      this.onError(error.message || "Join failed.");
+      this.stop(false);
+    }
+  }
+
+  watchQuestions() {
+    if (!this.database || this.closed) {
+      return;
+    }
+
+    const questionRef = ref(this.database, `${this.gameId}/q`);
+    this.questionUnsubscribe = onValue(questionRef, (snapshot) => {
+      if (this.closed || !this.joined) {
+        return;
+      }
+      const question = snapshot.val();
+      if (!question || typeof question !== "object") {
+        return;
+      }
+
+      const questionKey = JSON.stringify({
+        text: question.question || question.text || "",
+        answers: question.answers || [],
+      });
+      if (!questionKey || questionKey === this.lastQuestionKey) {
+        return;
+      }
+      this.lastQuestionKey = questionKey;
+
+      this.answerQuestion(question).catch(() => {});
+    });
+  }
+
+  async answerQuestion(question) {
+    if (!this.database || this.closed) {
+      return;
+    }
+
+    const answers = Array.isArray(question.answers) ? question.answers : [];
+    const correctAnswers = Array.isArray(question.correctAnswers) ? question.correctAnswers : [];
+    if (!answers.length || !correctAnswers.length) {
+      return;
+    }
+
+    let choiceIndex = answers.findIndex((answer) => correctAnswers.includes(answer));
+    if (choiceIndex < 0) {
+      choiceIndex = Math.floor(Math.random() * answers.length);
+    }
+
+    const delay = 400 + Math.floor(Math.random() * 1200);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    if (this.closed || !this.joined) {
+      return;
+    }
+
+    const answerValue = question.qType === "typing" ? answers[choiceIndex] : choiceIndex;
+    await update(ref(this.database, `${this.gameId}/c/${this.nickname}`), {
+      a: answerValue,
+      tat: Date.now(),
+    });
+
+    const preview = String(question.question || question.text || "Question").slice(0, 60);
+    this.log(`Answered Q: "${preview}" → choice ${choiceIndex + 1}`, "success");
+    this.status(`Answered → choice ${choiceIndex + 1}`);
+  }
+
+  stop(markClosed = true) {
+    if (markClosed) {
+      this.closed = true;
+    }
+    this.joined = false;
+
+    if (this.questionUnsubscribe) {
+      this.questionUnsubscribe();
+      this.questionUnsubscribe = null;
+    }
+
+    if (this.firebaseApp) {
+      deleteApp(this.firebaseApp).catch(() => {});
+      this.firebaseApp = null;
+    }
+    this.database = null;
+  }
+
+  isRunning() {
+    return this.joined && !this.closed;
+  }
+}
