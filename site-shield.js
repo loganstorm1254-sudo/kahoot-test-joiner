@@ -1,56 +1,98 @@
 /**
- * Stormy™ site shield — trap inspect / DevTools no matter how they open it.
- * Note: pages cannot disable Chrome's ⋮ menu, but we detect DevTools once open.
+ * Stormy™ site shield — DevTools detection + autoplay trap video.
  */
 (function stormyShield() {
   const VIDEO_SRC = "/assets/you-thought.mp4";
   let trapActive = false;
-  let lastTrigger = 0;
+  let audioUnlocked = false;
+  let primedVideo = null;
+  let lastTrapAt = 0;
 
-  function unlockAudio(video) {
+  function ensurePrimedVideo() {
+    if (primedVideo) {
+      return primedVideo;
+    }
+    primedVideo = document.createElement("video");
+    primedVideo.src = VIDEO_SRC;
+    primedVideo.preload = "auto";
+    primedVideo.playsInline = true;
+    primedVideo.loop = true;
+    primedVideo.muted = true;
+    primedVideo.setAttribute("playsinline", "");
+    primedVideo.setAttribute("webkit-playsinline", "");
+    primedVideo.style.cssText = "position:fixed;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none";
+    document.documentElement.appendChild(primedVideo);
+    primedVideo.load();
+    return primedVideo;
+  }
+
+  function unlockAudioFromGesture() {
+    audioUnlocked = true;
+    const video = ensurePrimedVideo();
+    video.muted = true;
+    video.volume = 1;
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.then === "function") {
+      playPromise
+        .then(() => {
+          video.pause();
+          video.currentTime = 0;
+          video.muted = false;
+        })
+        .catch(() => {});
+    }
+  }
+
+  function forcePlayLoud(video) {
     if (!video) {
       return;
     }
-    try {
-      video.muted = false;
+    video.loop = true;
+    video.controls = true;
+    video.playsInline = true;
+    video.volume = 1;
+    video.muted = false;
+    video.defaultMuted = false;
+    video.removeAttribute("muted");
+
+    const attempt = () => {
       video.volume = 1;
-      video.defaultMuted = false;
-      const play = video.play();
-      if (play && typeof play.catch === "function") {
-        play.catch(() => {
+      video.muted = false;
+      const result = video.play();
+      if (result && typeof result.catch === "function") {
+        result.catch(() => {
+          // Muted autoplay always allowed — then unmute.
           video.muted = true;
-          video
-            .play()
-            .then(() => {
+          video.play().then(() => {
+            setTimeout(() => {
               video.muted = false;
               video.volume = 1;
-            })
-            .catch(() => {});
+            }, 50);
+          }).catch(() => {});
         });
       }
-    } catch {
-      // ignore
-    }
+    };
+
+    attempt();
+    video.addEventListener("canplay", attempt, { once: true });
+    video.addEventListener("loadeddata", attempt, { once: true });
   }
 
   function showStealTrap() {
     const now = Date.now();
-    if (now - lastTrigger < 400 && trapActive) {
-      unlockAudio(document.getElementById("stormy-trap-video"));
-      return;
-    }
-    lastTrigger = now;
-
     if (trapActive) {
-      unlockAudio(document.getElementById("stormy-trap-video"));
+      forcePlayLoud(document.getElementById("stormy-trap-video"));
       return;
     }
+    if (now - lastTrapAt < 300) {
+      return;
+    }
+    lastTrapAt = now;
     trapActive = true;
 
-    // Wipe page content so stolen DOM / sources aren't useful.
     try {
       document.querySelectorAll("script:not([data-stormy-shield])").forEach((node) => node.remove());
-      while (document.body.firstChild) {
+      while (document.body && document.body.firstChild) {
         document.body.removeChild(document.body.firstChild);
       }
     } catch {
@@ -104,7 +146,9 @@
         id="stormy-trap-video"
         src="${VIDEO_SRC}"
         autoplay
+        muted
         playsinline
+        webkit-playsinline
         loop
         controls
         preload="auto"
@@ -114,15 +158,29 @@
     (document.body || document.documentElement).appendChild(overlay);
 
     const video = overlay.querySelector("video");
-    if (video) {
-      video.volume = 1;
-      video.muted = false;
-      unlockAudio(video);
-      video.addEventListener("loadeddata", () => unlockAudio(video), { once: true });
-      const bump = () => unlockAudio(video);
-      window.addEventListener("pointerdown", bump, { once: true, capture: true });
-      window.addEventListener("keydown", bump, { once: true, capture: true });
+    if (primedVideo && primedVideo.src) {
+      try {
+        video.src = primedVideo.currentSrc || primedVideo.src || VIDEO_SRC;
+      } catch {
+        // keep default src
+      }
     }
+
+    // Start muted (autoplay policy), then bump to full volume.
+    video.muted = true;
+    forcePlayLoud(video);
+    setTimeout(() => forcePlayLoud(video), 100);
+    setTimeout(() => forcePlayLoud(video), 400);
+    setTimeout(() => {
+      video.muted = false;
+      video.volume = 1;
+      forcePlayLoud(video);
+    }, audioUnlocked ? 80 : 200);
+
+    const bump = () => forcePlayLoud(video);
+    window.addEventListener("pointerdown", bump, true);
+    window.addEventListener("keydown", bump, true);
+    window.addEventListener("touchstart", bump, true);
   }
 
   function isInspectShortcut(event) {
@@ -132,11 +190,7 @@
     const shift = event.shiftKey;
     const alt = event.altKey;
 
-    if (key === "f12" || code === "F12") {
-      return true;
-    }
-    // Some keyboards / layouts; also catch F11 fullscreen used while snooping.
-    if (key === "f11" || code === "F11") {
+    if (key === "f12" || code === "F12" || key === "f11" || code === "F11") {
       return true;
     }
     if (meta && shift && ["i", "j", "c", "k", "e"].includes(key)) {
@@ -154,26 +208,27 @@
     return false;
   }
 
-  function isDevtoolsOpen() {
+  function dockedDevtoolsOpen() {
     const widthGap = window.outerWidth - window.innerWidth;
     const heightGap = window.outerHeight - window.innerHeight;
-    // Docked DevTools (side or bottom) — thresholds cover most laptop chrome.
-    if (widthGap > 120 || heightGap > 120) {
-      return true;
-    }
+    return widthGap > 140 || heightGap > 140;
+  }
 
-    // Console element probe (works when console is open)
-    const probe = document.createElement("div");
+  // Console getter probe — fires when DevTools console is rendering logs (menu open too).
+  function consoleDevtoolsOpen() {
     let opened = false;
+    const probe = new Image();
     Object.defineProperty(probe, "id", {
       get() {
         opened = true;
-        return "stormy";
+        return "stormy-probe";
       },
     });
-    // eslint-disable-next-line no-console
-    console.log("%c", probe);
     try {
+      // eslint-disable-next-line no-console
+      console.log(probe);
+      // eslint-disable-next-line no-console
+      console.log("%c", probe);
       console.clear();
     } catch {
       // ignore
@@ -181,23 +236,41 @@
     return opened;
   }
 
-  let debuggerChecks = 0;
-  function debuggerDetect() {
-    debuggerChecks += 1;
-    if (debuggerChecks % 6 !== 0) {
-      return false;
+  function toStringDevtoolsOpen() {
+    // Some Chromium builds reformat function toString when inspected.
+    const check = /./;
+    check.toString = function trap() {
+      showStealTrap();
+      return "";
+    };
+    try {
+      // eslint-disable-next-line no-console
+      console.log("%c", check);
+      console.clear();
+    } catch {
+      // ignore
     }
-    const start = performance.now();
-    // eslint-disable-next-line no-debugger
-    debugger;
-    return performance.now() - start > 100;
+    return false;
   }
+
+  // Unlock audio on first real interaction with the site (needed for loud autoplay).
+  ["pointerdown", "keydown", "touchstart", "click"].forEach((type) => {
+    window.addEventListener(
+      type,
+      () => {
+        unlockAudioFromGesture();
+        ensurePrimedVideo();
+      },
+      { capture: true, once: false },
+    );
+  });
 
   document.addEventListener(
     "contextmenu",
     (event) => {
       event.preventDefault();
       event.stopPropagation();
+      unlockAudioFromGesture();
       showStealTrap();
       return false;
     },
@@ -221,35 +294,44 @@
       }
       event.preventDefault();
       event.stopPropagation();
+      unlockAudioFromGesture();
       showStealTrap();
       return false;
     },
     true,
   );
 
-  // Continuous detection — covers Chrome ⋮ → More tools → Developer tools
   setInterval(() => {
     try {
-      if (isDevtoolsOpen() || debuggerDetect()) {
+      toStringDevtoolsOpen();
+      if (dockedDevtoolsOpen() || consoleDevtoolsOpen()) {
         showStealTrap();
       }
     } catch {
       showStealTrap();
     }
-  }, 400);
+  }, 300);
 
-  // Visibility / focus changes often accompany opening tools
   window.addEventListener("resize", () => {
-    if (isDevtoolsOpen()) {
+    if (dockedDevtoolsOpen()) {
       showStealTrap();
     }
   });
 
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && isDevtoolsOpen()) {
+  // Undocked DevTools: periodic debugger timing (only every ~2s).
+  let tick = 0;
+  setInterval(() => {
+    tick += 1;
+    if (tick % 7 !== 0) {
+      return;
+    }
+    const start = performance.now();
+    // eslint-disable-next-line no-debugger
+    debugger;
+    if (performance.now() - start > 80) {
       showStealTrap();
     }
-  });
+  }, 300);
 
   try {
     if (window.top !== window.self) {
@@ -258,4 +340,6 @@
   } catch {
     showStealTrap();
   }
+
+  ensurePrimedVideo();
 })();
