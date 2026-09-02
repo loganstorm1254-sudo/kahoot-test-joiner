@@ -432,18 +432,8 @@ button {
   background: linear-gradient(160deg, #1a1033 0%, #2d1b69 50%, #46178f 100%);
 }
 
-.joiner-layout {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 20px;
-  width: min(100%, 1180px);
-}
-
 .joiner-card {
-  flex: 1 1 720px;
   width: min(100%, 720px);
-  max-width: 720px;
   padding: 28px 24px 22px;
   border-radius: 12px;
   background: #ffffff;
@@ -740,30 +730,14 @@ input[type="text"]:focus {
   color: #15803d;
 }
 
-/* In-flow display ads — side rails + bottom strip */
+/* One in-flow display ad at the bottom of the joiner */
 .stormy-ad {
-  min-height: 0;
-  max-width: 100%;
-  overflow: hidden;
-}
-
-.stormy-ad-side {
-  flex: 0 0 160px;
-  width: 160px;
-  min-height: 600px;
-  margin: 0;
-  padding: 10px 8px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  position: sticky;
-  top: 24px;
-}
-
-.stormy-ad-bottom {
   margin: 16px 0 0;
   padding: 10px 0 0;
   border-top: 1px solid var(--border);
+  min-height: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .stormy-ad[hidden] {
@@ -776,25 +750,6 @@ input[type="text"]:focus {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #a3a3a3;
-}
-
-.stormy-ad-side .stormy-ad-label {
-  color: rgba(255, 255, 255, 0.45);
-  text-align: center;
-}
-
-.stormy-ad .adsbygoogle {
-  max-width: 100%;
-}
-
-@media (max-width: 1100px) {
-  .stormy-ad-side {
-    display: none !important;
-  }
-
-  .joiner-layout {
-    width: min(100%, 720px);
-  }
 }
 
 @media (max-width: 480px) {

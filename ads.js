@@ -1,82 +1,44 @@
-import {
-  ADSTERRA_KEY,
-  ADSTERRA_KEY_LEFT,
-  ADSTERRA_KEY_RIGHT,
-  ADSTERRA_INVOKE_HOST,
-} from "./ads-config.js";
+import { ADSTERRA_KEY, ADSTERRA_INVOKE_HOST } from "./ads-config.js";
 
-const SLOTS = [
-  {
-    id: "stormy-ad-left",
-    key: ADSTERRA_KEY_LEFT,
-    width: 160,
-    height: 600,
-  },
-  {
-    id: "stormy-ad-right",
-    key: ADSTERRA_KEY_RIGHT,
-    width: 160,
-    height: 600,
-  },
-  {
-    id: "stormy-ad",
-    key: ADSTERRA_KEY,
-    width: 728,
-    height: 90,
-  },
-];
-
-function resolveKey(key) {
-  const value = String(key || ADSTERRA_KEY || "").trim();
-  return value || null;
+function ready() {
+  return Boolean(String(ADSTERRA_KEY || "").trim());
 }
 
-function mountBanner(root, { key, width, height }) {
+function mountBanner(root) {
   if (!root || root.dataset.stormyAdReady === "1") {
-    return Promise.resolve();
+    return;
   }
 
-  const adKey = resolveKey(key);
-  if (!adKey) {
-    root.hidden = true;
-    return Promise.resolve();
-  }
-
+  const key = ADSTERRA_KEY.trim();
   root.dataset.stormyAdReady = "1";
   root.hidden = false;
 
   const options = document.createElement("script");
   options.textContent = `atOptions = {
-    key: ${JSON.stringify(adKey)},
+    key: ${JSON.stringify(key)},
     format: "iframe",
-    height: ${height},
-    width: ${width},
+    height: 90,
+    width: 728,
     params: {}
   };`;
   root.appendChild(options);
 
-  return new Promise((resolve) => {
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = `https://${ADSTERRA_INVOKE_HOST}/${encodeURIComponent(adKey)}/invoke.js`;
-    script.onload = () => resolve();
-    script.onerror = () => resolve();
-    root.appendChild(script);
-  });
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = `https://${ADSTERRA_INVOKE_HOST}/${encodeURIComponent(key)}/invoke.js`;
+  root.appendChild(script);
 }
 
-/** Banners: left + right of joiner console, plus bottom strip. */
-export async function initStormyAd() {
-  for (const slot of SLOTS) {
-    const root = document.getElementById(slot.id);
-    if (!root) {
-      continue;
-    }
-    if (!resolveKey(slot.key)) {
-      root.hidden = true;
-      root.replaceChildren();
-      continue;
-    }
-    await mountBanner(root, slot);
+/** One Adsterra banner (728×90) at the bottom of the joiner. */
+export function initStormyAd() {
+  const root = document.getElementById("stormy-ad");
+  if (!root) {
+    return;
   }
+  if (!ready()) {
+    root.hidden = true;
+    root.replaceChildren();
+    return;
+  }
+  mountBanner(root);
 }
