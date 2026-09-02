@@ -2,8 +2,8 @@ import {
   BlooketJoiner,
   isValidBlooketGameId,
   normalizeBlooketGameId,
+  requestBlooketJoins,
 } from "./blooket-client.js";
-import { requestBlooketJoinsViaRelay } from "./blooket-relay.js";
 import { generateRandomName, generateUniqueNames } from "./name-generator.js";
 
 const BLOOKET_SECRET_CODE = "1254";
@@ -155,7 +155,7 @@ async function onJoin() {
   logActivity(`Starting Blooket batch: ${count} player${count === 1 ? "" : "s"}, game ${gameId}`);
 
   try {
-    const batch = await requestBlooketJoinsViaRelay(gameId, nicknames);
+    const batch = await requestBlooketJoins(gameId, nicknames);
     if (activeSession !== session) {
       return;
     }
