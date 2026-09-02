@@ -1,13 +1,21 @@
-const BLOOKET_ORIGIN = "https://play.blooket.com";
+const JOINER_REQUEST_EVENT = "blooket-joiner-request";
+const EXTENSION_RELAY_EVENT = "blooket-extension-relay";
 const RELAY_READY_TIMEOUT_MS = 20000;
 const RELAY_JOIN_TIMEOUT_MS = 25000;
 
-let relayWindow = null;
 let relayReady = false;
 const relayWaiters = new Map();
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function dispatchRequest(detail) {
+  document.dispatchEvent(
+    new CustomEvent(JOINER_REQUEST_EVENT, {
+      detail: { source: "blooket-joiner", ...detail },
+    }),
+  );
 }
 
 function ensureRelayListener() {
@@ -16,60 +24,41 @@ function ensureRelayListener() {
   }
   ensureRelayListener.installed = true;
 
-  window.addEventListener("message", (event) => {
-    if (event.origin !== BLOOKET_ORIGIN || !event.data || event.data.source !== "blooket-relay") {
+  document.addEventListener(EXTENSION_RELAY_EVENT, (event) => {
+    const data = event.detail;
+    if (!data || data.source !== "blooket-relay") {
       return;
     }
 
-    if (event.data.type === "READY") {
+    if (data.type === "READY") {
       relayReady = true;
       return;
     }
 
-    if (event.data.type !== "JOIN_RESULT" || !event.data.jobId) {
+    if (data.type !== "JOIN_RESULT" || !data.jobId) {
       return;
     }
 
-    const waiter = relayWaiters.get(event.data.jobId);
+    const waiter = relayWaiters.get(data.jobId);
     if (!waiter) {
       return;
     }
-    relayWaiters.delete(event.data.jobId);
+    relayWaiters.delete(data.jobId);
     clearTimeout(waiter.timeoutId);
-    waiter.resolve(event.data.result || { success: false, msg: "Empty relay response." });
+    waiter.resolve(data.result || { success: false, msg: "Empty relay response." });
   });
-}
-
-export function openBlooketRelayWindow(gameId) {
-  ensureRelayListener();
-  relayReady = false;
-
-  const url = `https://play.blooket.com/play?id=${encodeURIComponent(gameId)}`;
-  if (relayWindow && !relayWindow.closed) {
-    try {
-      relayWindow.location.href = url;
-      relayWindow.focus();
-      return relayWindow;
-    } catch {
-      relayWindow = null;
-    }
-  }
-
-  relayWindow = window.open(url, "blooket_join_relay", "width=1,height=1,left=-9999,top=-9999");
-  return relayWindow;
 }
 
 export async function waitForBlooketRelay(timeoutMs = RELAY_READY_TIMEOUT_MS) {
   ensureRelayListener();
+  relayReady = false;
   const started = Date.now();
 
   while (Date.now() - started < timeoutMs) {
-    if (relayReady && relayWindow && !relayWindow.closed) {
+    if (relayReady) {
       return true;
     }
-    if (relayWindow && !relayWindow.closed) {
-      relayWindow.postMessage({ source: "blooket-joiner", type: "PING" }, BLOOKET_ORIGIN);
-    }
+    dispatchRequest({ type: "PING" });
     await sleep(300);
   }
 
@@ -78,11 +67,6 @@ export async function waitForBlooketRelay(timeoutMs = RELAY_READY_TIMEOUT_MS) {
 
 function joinOneViaRelay(gameId, name) {
   return new Promise((resolve, reject) => {
-    if (!relayWindow || relayWindow.closed) {
-      reject(new Error("Blooket relay window is closed."));
-      return;
-    }
-
     const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const timeoutId = setTimeout(() => {
       relayWaiters.delete(jobId);
@@ -90,26 +74,20 @@ function joinOneViaRelay(gameId, name) {
     }, RELAY_JOIN_TIMEOUT_MS);
 
     relayWaiters.set(jobId, { resolve, reject, timeoutId });
-    relayWindow.postMessage(
-      {
-        source: "blooket-joiner",
-        type: "JOIN",
-        jobId,
-        id: gameId,
-        name,
-      },
-      BLOOKET_ORIGIN,
-    );
+    dispatchRequest({
+      type: "JOIN",
+      jobId,
+      id: gameId,
+      name,
+    });
   });
 }
 
 export async function requestBlooketJoinsViaRelay(gameId, names) {
-  openBlooketRelayWindow(gameId);
-
   const ready = await waitForBlooketRelay();
   if (!ready) {
     throw new Error(
-      "Blooket helper not connected. Install the one-time Chrome extension (see link above), allow popups, then try again.",
+      "Blooket helper not connected. Install the one-time Chrome extension (see setup below), reload this page, then try again.",
     );
   }
 

@@ -153,7 +153,6 @@ async function onJoin() {
   setConnected(true);
   setStatus(`Joining ${count} player${count === 1 ? "" : "s"}…`);
   logActivity(`Starting Blooket batch: ${count} player${count === 1 ? "" : "s"}, game ${gameId}`);
-  logActivity("Allow popups for this site if prompted.", { level: "info" });
 
   try {
     const batch = await requestBlooketJoinsViaRelay(gameId, nicknames);
