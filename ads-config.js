@@ -1,10 +1,11 @@
 /**
- * Stormy™ ads — Media.net (one quiet banner, no popups).
+ * Stormy™ ads — Adsterra (one 728×90 banner, no popups if you set it up right).
  *
- * 1. Point kahoot.lopro.cc at this site on Vercel
- * 2. Sign up: https://www.media.net/
- * 3. Add site kahoot.lopro.cc → get approved
- * 4. Create one Display ad unit → paste CID + Tag ID below
+ * 1. kahoot.lopro.cc must be live on Vercel
+ * 2. Sign up: https://publishers.adsterra.com/
+ * 3. Add site kahoot.lopro.cc → create ad unit → Banner 728×90 ONLY
+ * 4. Paste the "key" from their code snippet below
+ *
+ * In Adsterra dashboard: do NOT enable Popunder, Social Bar, or Native — banner only.
  */
-export const MEDIANET_CID = ""; // e.g. "8CUX1A2B3C"
-export const MEDIANET_TAG_ID = ""; // e.g. "123456789" (ad tag / container id)
+export const ADSTERRA_KEY = ""; // atOptions.key from your banner unit code
