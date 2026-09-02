@@ -61,7 +61,18 @@ export async function requestBlooketJoins(gameId, names) {
   const timeoutId = setTimeout(() => controller.abort(), 180000);
 
   try {
-    const response = await fetch("/api/blooket-join", {
+    let endpoint = "/api/blooket-join";
+    try {
+      const configResponse = await fetch("/api/blooket-config", { signal: controller.signal });
+      const config = await configResponse.json().catch(() => ({}));
+      if (config?.joinWorkerUrl) {
+        endpoint = config.joinWorkerUrl;
+      }
+    } catch {
+      // Fall back to the Vercel join route.
+    }
+
+    const response = await fetch(endpoint, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: gameId, names }),
@@ -75,7 +86,11 @@ export async function requestBlooketJoins(gameId, names) {
       throw new Error(`Server error (${response.status}). Hard refresh and retry.`);
     }
     if (!Array.isArray(data.joins)) {
-      throw new Error(data.msg || `Join request failed (HTTP ${response.status}).`);
+      const hint =
+        response.status === 403 || /403|blocked|cloudflare/i.test(data.msg || "")
+          ? " Deploy the Cloudflare join worker and set BLOOKET_JOIN_WORKER_URL in Vercel."
+          : "";
+      throw new Error((data.msg || `Join request failed (HTTP ${response.status}).`) + hint);
     }
     return data;
   } catch (error) {

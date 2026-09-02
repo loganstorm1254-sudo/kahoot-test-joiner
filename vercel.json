@@ -10,9 +10,10 @@
       "maxDuration": 30
     },
     "api/blooket-join.js": {
-      "maxDuration": 60,
-      "memory": 1024,
-      "includeFiles": "node_modules/@sparticuz/chromium/**"
+      "maxDuration": 60
+    },
+    "api/blooket-config.js": {
+      "maxDuration": 10
     },
     "api/blooket-build.js": {
       "maxDuration": 15
