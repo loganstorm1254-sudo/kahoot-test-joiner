@@ -21,7 +21,7 @@ export async function GET() {
       fullSha: sha,
       label: `build ${shortSha}`,
       deployedAt,
-      features: ["stormy-2026-v1", "stormy-search", "stormy-vision", "kahoot-joiner", "activity-log"],
+      features: ["stormy-2026-v2", "stormy-search", "free-image-search", "kahoot-joiner", "activity-log"],
     },
     { headers: corsHeaders() },
   );

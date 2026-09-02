@@ -620,7 +620,7 @@ function onJoin() {
     source: "system",
   });
   if (autoAnswer) {
-    appendActivityLog("Stormy™ AI on — web search + vision for image questions", {
+    appendActivityLog("Stormy™ search on — free web + reverse image lookup (no API keys)", {
       source: "system",
     });
   }

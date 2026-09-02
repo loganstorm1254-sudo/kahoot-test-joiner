@@ -363,190 +363,27 @@ function fuzzMatch(left, right) {
   return overlap >= 1;
 }
 
-async function fetchImageBytes(imageUrl) {
-  try {
-    const response = await fetch(imageUrl, {
-      headers: {
-        Accept: "image/*,*/*",
-        "User-Agent": USER_AGENT,
-      },
-      redirect: "follow",
-    });
-    if (!response.ok) {
-      return null;
-    }
-
-    const mime = (response.headers.get("content-type") || "image/jpeg").split(";")[0].trim();
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length < 100 || buffer.length > 8_000_000) {
-      return null;
-    }
-
-    return {
-      base64: buffer.toString("base64"),
-      mime,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function describeImageWithGemini(imageUrl, prompt) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    return null;
-  }
-
-  const imageData = await fetchImageBytes(imageUrl);
-  if (!imageData) {
-    return null;
-  }
-
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "User-Agent": USER_AGENT,
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: imageData.mime,
-                data: imageData.base64,
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 80,
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = await response.json().catch(() => null);
-  const text = data?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || "")
-    .join(" ")
-    .trim();
-  return text || null;
-}
-
-async function describeImageWithOpenAI(imageUrl, prompt) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return null;
-  }
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "User-Agent": USER_AGENT,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      temperature: 0.1,
-      max_tokens: 80,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: imageUrl } },
-          ],
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = await response.json().catch(() => null);
-  return data?.choices?.[0]?.message?.content?.trim() || null;
-}
-
-async function describeImageFromInline(inline, prompt) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey || !inline?.data) {
-    return null;
-  }
-
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "User-Agent": USER_AGENT,
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: inline.mime || "image/jpeg",
-                data: inline.data,
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 80,
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = await response.json().catch(() => null);
-  const text = data?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || "")
-    .join(" ")
-    .trim();
-  return text ? { text, source: "stormy-vision-inline" } : null;
-}
-
-async function describeImage(imageUrl, prompt, inline = null) {
-  if (inline?.data) {
-    const inlineResult = await describeImageFromInline(inline, prompt);
-    if (inlineResult) {
-      return inlineResult;
-    }
-  }
-
-  const gemini = await describeImageWithGemini(imageUrl, prompt);
-  if (gemini) {
-    return { text: gemini, source: "gemini-vision" };
-  }
-
-  const openai = await describeImageWithOpenAI(imageUrl, prompt);
-  if (openai) {
-    return { text: openai, source: "openai-vision" };
-  }
-
+async function fetchImageBytes(_imageUrl) {
   return null;
 }
 
-async function runVisionAnalysis(question, choices, imageUrl, choiceImages, steps, inlineImages = null) {
+/** Free image path: reverse-image search titles/snippets (no Gemini/OpenAI). */
+async function describeImageFromSearch(imageUrl) {
+  if (!imageUrl) {
+    return null;
+  }
+  const result = await runImageSearch(imageUrl, "");
+  if (!result) {
+    return null;
+  }
+  const text = [result.titles[0], result.titles[1], result.snippets[0]]
+    .filter(Boolean)
+    .join(" · ")
+    .slice(0, 200);
+  return text ? { text, source: result.source || "image-search" } : null;
+}
+
+async function runVisionAnalysis(question, choices, imageUrl, choiceImages, steps) {
   const normalizedQuestionImage = normalizeImageUrl(imageUrl);
   const normalizedChoiceImages = (choiceImages || [])
     .map((url) => normalizeImageUrl(url))
@@ -563,26 +400,19 @@ async function runVisionAnalysis(question, choices, imageUrl, choiceImages, step
     };
   }
 
-  steps.push({ message: "Stormy™ vision: analyzing images…", level: "info" });
-
-  const questionPrompt = `Identify the character, person, animal, or main subject. Reply with ONLY the name (1-5 words). Context: ${question}`;
-  const choicePrompt = "Name this character or person. Reply with ONLY the name (1-5 words).";
+  steps.push({ message: "Stormy™ image search (free reverse lookup)…", level: "info" });
 
   let questionVision = null;
-  if (hasQuestionImage || inlineImages?.question) {
-    questionVision = await describeImage(
-      normalizedQuestionImage,
-      questionPrompt,
-      inlineImages?.question || null,
-    );
+  if (hasQuestionImage) {
+    questionVision = await describeImageFromSearch(normalizedQuestionImage);
     if (questionVision?.text) {
       steps.push({
-        message: `Vision (question image): ${questionVision.text}`,
+        message: `Image match: ${questionVision.text}`,
         level: "info",
       });
     } else {
       steps.push({
-        message: "Vision could not read question image (set GEMINI_API_KEY or OPENAI_API_KEY on Vercel)",
+        message: "No reverse-image match — scoring from text search instead",
         level: "warn",
       });
     }
@@ -590,14 +420,12 @@ async function runVisionAnalysis(question, choices, imageUrl, choiceImages, step
 
   const visionScores = choices.map(() => 0);
   const choiceDescriptions = [];
+  let results = [];
 
   if (hasChoiceImages) {
     const paddedImages = choices.map((_, index) => normalizedChoiceImages[index] || "");
-    const results = await Promise.all(
-      paddedImages.map((url, index) => {
-        const inline = inlineImages?.choices?.[index] || null;
-        return url || inline ? describeImage(url, choicePrompt, inline) : Promise.resolve(null);
-      }),
+    results = await Promise.all(
+      paddedImages.map((url) => (url ? describeImageFromSearch(url) : Promise.resolve(null))),
     );
 
     for (let index = 0; index < results.length; index += 1) {
@@ -606,7 +434,7 @@ async function runVisionAnalysis(question, choices, imageUrl, choiceImages, step
       if (result?.text) {
         choiceDescriptions.push(result.text);
         steps.push({
-          message: `Vision (${label}): ${result.text}`,
+          message: `Image (${label}): ${result.text}`,
           level: "info",
         });
       }
@@ -654,7 +482,7 @@ async function runVisionAnalysis(question, choices, imageUrl, choiceImages, step
     imageDescription,
     visionCorpus,
     usedVision: Boolean(imageDescription || choiceDescriptions.length),
-    visionSource: questionVision?.source || "vision",
+    visionSource: questionVision?.source || "image-search",
   };
 }
 
@@ -1050,7 +878,6 @@ async function resolveStormySearch(
     normalizedImageUrl,
     normalizedChoiceImages,
     steps,
-    inlineImages,
   );
   imageDescription = vision.imageDescription || "";
 
