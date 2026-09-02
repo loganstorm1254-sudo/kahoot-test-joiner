@@ -36,7 +36,7 @@
                 <span class="kahoot-nav-icon kahoot-nav-icon-learn" aria-hidden="true"></span>
                 <span class="kahoot-nav-label">Learn</span>
               </a>
-              <a class="kahoot-nav-item" href="#" id="open-blooket">
+              <a class="kahoot-nav-item" href="https://kahoot.com/host" target="_blank" rel="noopener noreferrer">
                 <span class="kahoot-nav-icon kahoot-nav-icon-present" aria-hidden="true"></span>
                 <span class="kahoot-nav-label">Present</span>
               </a>
@@ -100,100 +100,6 @@
           </footer>
         </main>
       </div>
-    </div>
-
-    <div id="view-blooket-decoy" class="view view-blooket-decoy is-hidden" hidden>
-      <div class="blooket-shell">
-        <header class="blooket-topbar">
-          <a class="blooket-logo-link" href="#" id="blooket-logo-home" aria-label="Blooket">
-            <img class="blooket-logo-img" src="/assets/blooket-logo.svg" width="140" height="40" alt="Blooket" />
-          </a>
-          <nav class="blooket-topnav" aria-label="Blooket navigation">
-            <a class="blooket-nav-link" href="https://id.blooket.com/login" target="_blank" rel="noopener noreferrer">Log In</a>
-            <a class="blooket-nav-link blooket-nav-link-primary" href="https://id.blooket.com/signup" target="_blank" rel="noopener noreferrer">Sign Up</a>
-          </nav>
-        </header>
-
-        <main class="blooket-page">
-          <div class="blooket-hero-card">
-            <h1 class="blooket-title">Play Blooket</h1>
-            <p class="blooket-subtitle">Enter your game code to join a live game.</p>
-
-            <form id="blooket-decoy-form" class="blooket-form" autocomplete="off">
-              <label class="blooket-label" for="blooket-decoy-game-id">Game ID</label>
-              <input
-                id="blooket-decoy-game-id"
-                class="blooket-input"
-                type="text"
-                inputmode="numeric"
-                placeholder="000000"
-                maxlength="8"
-                autocomplete="off"
-              />
-              <button id="blooket-decoy-join" class="blooket-button" type="submit">Join Game</button>
-            </form>
-            <p id="blooket-decoy-status" class="blooket-status" aria-live="polite"></p>
-          </div>
-        </main>
-      </div>
-    </div>
-
-    <div id="view-blooket-joiner" class="view view-blooket-joiner is-hidden" hidden>
-      <main class="joiner-page joiner-page-blooket">
-        <div class="joiner-card joiner-card-blooket">
-          <div class="joiner-header">
-            <p class="joiner-eyebrow">Blooket test joiner</p>
-            <h1 class="joiner-title">Batch join</h1>
-          </div>
-
-          <form class="joiner-form" onsubmit="return false">
-            <fieldset class="joiner-group">
-              <legend class="joiner-legend">Game ID</legend>
-              <input id="blooket-pin" type="text" inputmode="numeric" placeholder="123456" autocomplete="off" />
-            </fieldset>
-
-            <fieldset class="joiner-group">
-              <legend class="joiner-legend">Base player name</legend>
-              <input id="blooket-name" type="text" value="bot" autocomplete="off" />
-            </fieldset>
-
-            <fieldset class="joiner-group">
-              <legend class="joiner-legend">Players to join</legend>
-              <div class="count-control">
-                <input id="blooket-count" type="range" min="1" max="44" value="1" aria-label="Players to join" />
-                <input id="blooket-count-input" type="number" min="1" max="44" value="1" inputmode="numeric" />
-              </div>
-            </fieldset>
-
-            <fieldset class="joiner-group joiner-group-options">
-              <legend class="joiner-legend">Options</legend>
-              <label class="option-row">
-                <input id="blooket-random-names" type="checkbox" checked />
-                <span>Random names</span>
-              </label>
-              <label class="option-row">
-                <input id="blooket-auto-answer" type="checkbox" checked />
-                <span>Auto-answer questions</span>
-              </label>
-            </fieldset>
-
-            <div class="joiner-actions">
-              <button id="blooket-join" type="button" class="button button-primary button-blooket">Enter</button>
-              <button id="blooket-disconnect" type="button" class="button button-secondary" disabled>Leave all</button>
-            </div>
-          </form>
-
-          <p id="blooket-status" class="status">Enter a game ID to join</p>
-
-          <div class="activity-log-panel">
-            <div class="activity-log-header">
-              <span class="activity-log-title">Activity log</span>
-              <button type="button" id="blooket-clear-log" class="button button-secondary button-small">Clear</button>
-            </div>
-            <div id="blooket-activity-log" class="activity-log" aria-live="polite"></div>
-          </div>
-        </div>
-      </main>
     </div>
 
     <div id="view-joiner" class="view view-joiner is-hidden" hidden>
@@ -268,6 +174,6 @@
       </main>
     </div>
 
-    <script type="module" src="/app.js?v=kahoot-decoy-v32"></script>
+    <script type="module" src="/app.js?v=kahoot-decoy-v33"></script>
   </body>
 </html>

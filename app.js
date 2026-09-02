@@ -13,7 +13,6 @@ import {
 } from "./quiz-answers.js";
 import { CLIENT_BUILD } from "./version.js";
 import { appendActivityLog, appendActivitySteps, clearActivityLog } from "./activity-log.js";
-import { isBlooketSecretCode } from "./blooket-shared.js";
 
 const pinInput = document.getElementById("pin");
 const nameInput = document.getElementById("name");
@@ -725,22 +724,14 @@ if (clearLogButton) {
 
 const viewDecoy = document.getElementById("view-decoy");
 const viewJoiner = document.getElementById("view-joiner");
-const viewBlooketDecoy = document.getElementById("view-blooket-decoy");
-const viewBlooketJoiner = document.getElementById("view-blooket-joiner");
 const decoyForm = document.getElementById("decoy-form");
 const decoyPinInput = document.getElementById("decoy-pin");
 const decoyStatusEl = document.getElementById("decoy-status");
 const decoyEnterButton = document.getElementById("decoy-enter");
-const blooketDecoyForm = document.getElementById("blooket-decoy-form");
-const blooketDecoyGameIdInput = document.getElementById("blooket-decoy-game-id");
-const blooketDecoyStatusEl = document.getElementById("blooket-decoy-status");
-const blooketDecoyJoinButton = document.getElementById("blooket-decoy-join");
 
 const VIEW = {
   KAHOOT_DECOY: "kahoot-decoy",
   KAHOOT_JOINER: "kahoot-joiner",
-  BLOOKET_DECOY: "blooket-decoy",
-  BLOOKET_JOINER: "blooket-joiner",
 };
 
 let showingJoiner = false;
@@ -774,8 +765,6 @@ function setActiveView(viewName) {
   const views = {
     [VIEW.KAHOOT_DECOY]: viewDecoy,
     [VIEW.KAHOOT_JOINER]: viewJoiner,
-    [VIEW.BLOOKET_DECOY]: viewBlooketDecoy,
-    [VIEW.BLOOKET_JOINER]: viewBlooketJoiner,
   };
 
   for (const [name, element] of Object.entries(views)) {
@@ -790,16 +779,12 @@ function setActiveView(viewName) {
   const titles = {
     [VIEW.KAHOOT_DECOY]: "Enter Game PIN - Kahoot!",
     [VIEW.KAHOOT_JOINER]: "Test Joiner",
-    [VIEW.BLOOKET_DECOY]: "Play Blooket",
-    [VIEW.BLOOKET_JOINER]: "Blooket Test Joiner",
   };
   document.title = titles[viewName] || titles[VIEW.KAHOOT_DECOY];
 
   const backgrounds = {
     [VIEW.KAHOOT_DECOY]: "#2f1d5c",
     [VIEW.KAHOOT_JOINER]: "#1a1033",
-    [VIEW.BLOOKET_DECOY]: "#59b9ff",
-    [VIEW.BLOOKET_JOINER]: "#0f4dc4",
   };
   document.documentElement.style.background = backgrounds[viewName] || "#2f1d5c";
   resetQuickExitBuffer();
@@ -843,14 +828,6 @@ function handleQuickExitKey(event) {
     }
     if (activeView === VIEW.KAHOOT_JOINER) {
       setActiveView(VIEW.KAHOOT_DECOY);
-      return;
-    }
-    if (activeView === VIEW.BLOOKET_DECOY) {
-      setActiveView(VIEW.BLOOKET_JOINER);
-      return;
-    }
-    if (activeView === VIEW.BLOOKET_JOINER) {
-      setActiveView(VIEW.BLOOKET_DECOY);
     }
   }
 }
@@ -940,57 +917,6 @@ function openJoinerView() {
   setActiveView(VIEW.KAHOOT_JOINER);
 }
 
-function openBlooketDecoyView() {
-  setActiveView(VIEW.BLOOKET_DECOY);
-}
-
-function openBlooketJoinerView() {
-  setActiveView(VIEW.BLOOKET_JOINER);
-}
-
-function normalizeBlooketDecoyGameId(value) {
-  return String(value || "").replace(/\D/g, "");
-}
-
-function onBlooketDecoyGameIdInput() {
-  if (!blooketDecoyGameIdInput) {
-    return;
-  }
-  const digits = normalizeBlooketDecoyGameId(blooketDecoyGameIdInput.value);
-  if (digits !== blooketDecoyGameIdInput.value.replace(/\s/g, "")) {
-    blooketDecoyGameIdInput.value = digits;
-  }
-  if (isBlooketSecretCode(digits)) {
-    openBlooketJoinerView();
-  }
-}
-
-function getRealBlooketJoinUrl(gameId) {
-  return `https://play.blooket.com/play?id=${encodeURIComponent(gameId)}`;
-}
-
-async function onBlooketDecoySubmit(event) {
-  event.preventDefault();
-  if (!blooketDecoyGameIdInput) {
-    return;
-  }
-
-  const gameId = normalizeBlooketDecoyGameId(blooketDecoyGameIdInput.value);
-  if (isBlooketSecretCode(gameId)) {
-    openBlooketJoinerView();
-    return;
-  }
-
-  if (gameId.length < 5) {
-    if (blooketDecoyStatusEl) {
-      blooketDecoyStatusEl.textContent = "Please enter a valid game ID.";
-    }
-    return;
-  }
-
-  window.location.assign(getRealBlooketJoinUrl(gameId));
-}
-
 function initShell() {
   setActiveView(VIEW.KAHOOT_DECOY);
   document.addEventListener("keydown", handleQuickExitKey);
@@ -1003,19 +929,6 @@ function initShell() {
     });
   }
 
-  const presentNavButton = document.getElementById("open-blooket");
-  if (presentNavButton) {
-    presentNavButton.addEventListener("click", (event) => {
-      event.preventDefault();
-      openBlooketDecoyView();
-    });
-  }
-
-  document.getElementById("blooket-logo-home")?.addEventListener("click", (event) => {
-    event.preventDefault();
-    setActiveView(VIEW.KAHOOT_DECOY);
-  });
-
   if (decoyForm) {
     decoyForm.addEventListener("submit", onDecoySubmit);
   }
@@ -1023,20 +936,6 @@ function initShell() {
     decoyPinInput.addEventListener("input", onDecoyPinInput);
     decoyPinInput.addEventListener("blur", onDecoyPinInput);
   }
-
-  if (blooketDecoyForm) {
-    blooketDecoyForm.addEventListener("submit", onBlooketDecoySubmit);
-  }
-  if (blooketDecoyGameIdInput) {
-    blooketDecoyGameIdInput.addEventListener("input", onBlooketDecoyGameIdInput);
-    blooketDecoyGameIdInput.addEventListener("blur", onBlooketDecoyGameIdInput);
-  }
-
-  import("./blooket-app.js")
-    .then((module) => module.initBlooketJoiner())
-    .catch((error) => {
-      console.error("Blooket joiner failed to load:", error);
-    });
 }
 
 function boot() {

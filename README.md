@@ -1,6 +1,6 @@
 # Kahoot Test Joiner (Web)
 
-Browser-based Kahoot and Blooket test joiner — join multiple fake players to a live game for testing.
+Browser-based Kahoot test joiner — join multiple fake players to a live game for testing.
 
 **For testing only.**
 
@@ -8,7 +8,6 @@ Browser-based Kahoot and Blooket test joiner — join multiple fake players to a
 
 ```bash
 cd /Users/loganstorm/Untitled/kahoot-test-joiner-vercel
-gh auth login
 git push origin main
 ```
 
@@ -21,9 +20,6 @@ git push origin main
 
 - `/api/session` proxies Kahoot session reservation (CORS)
 - WebSocket connections go directly from the browser to `wss://kahoot.it`
-- `/api/blooket-join` proxies Blooket joins (same pattern as `/api/session` for Kahoot). The Cloudflare worker uses Browser Rendering when Blooket blocks datacenter IPs.
-
-The first Blooket batch can take **20–40 seconds** while Chromium downloads and joins.
 
 ## Local dev
 
@@ -36,8 +32,8 @@ npx vercel dev
 
 ## Features
 
-- Join up to 100 Kahoot test players
-- Blooket batch joiner (secret code `1254` on decoy)
+- Join up to 44 Kahoot test players
 - Random names per player
 - Auto-answer questions (testing)
 - Kahoot-style UI
+- Secret joiner: type `qw` on the decoy page, or click **Make**

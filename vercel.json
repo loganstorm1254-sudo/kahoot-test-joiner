@@ -9,15 +9,6 @@
     "api/search.js": {
       "maxDuration": 30
     },
-    "api/blooket-join.js": {
-      "maxDuration": 60
-    },
-    "api/blooket-config.js": {
-      "maxDuration": 10
-    },
-    "api/blooket-build.js": {
-      "maxDuration": 15
-    },
     "api/version.js": {
       "maxDuration": 10
     }
@@ -51,7 +42,7 @@
       ]
     },
     {
-      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|blooket-client|blooket-app|blooket-shared|blooket-crypto|version)\\.js",
+      "source": "/(app|kahoot-client|quiz-answers|activity-log|kahoot-images|version)\\.js",
       "headers": [
         {
           "key": "Cache-Control",
