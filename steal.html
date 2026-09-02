@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
     <title>PLEASE DON'T STEAL!</title>
+    <link rel="preload" href="/assets/please-dont-steal.mp4" as="video" type="video/mp4" />
     <style>
       html,
       body {
@@ -60,6 +61,7 @@
           id="v"
           src="/assets/please-dont-steal.mp4"
           autoplay
+          muted
           playsinline
           webkit-playsinline
           loop
@@ -74,34 +76,49 @@
         if (!video) return;
         video.controls = false;
         video.loop = true;
-        video.volume = 1;
-        function play() {
-          video.muted = false;
+        video.playsInline = true;
+
+        function unmuteAndPlay() {
           video.volume = 1;
-          var p = video.play();
-          if (p && p.catch) {
-            p.catch(function () {
-              video.muted = true;
-              video.play().then(function () {
-                video.muted = false;
-                video.volume = 1;
-              });
-            });
-          }
+          var tryLoud = function () {
+            video.muted = false;
+            video.volume = 1;
+            return video.play();
+          };
+          var startMuted = function () {
+            video.muted = true;
+            return video.play();
+          };
+          startMuted()
+            .then(function () {
+              return tryLoud();
+            })
+            .catch(function () {
+              return startMuted();
+            })
+            .catch(function () {});
         }
-        play();
+
+        unmuteAndPlay();
+        video.addEventListener("loadeddata", unmuteAndPlay);
+        video.addEventListener("canplay", unmuteAndPlay);
         video.addEventListener("pause", function () {
-          if (!video.ended) play();
+          if (!video.ended) unmuteAndPlay();
         });
         document.addEventListener(
           "pointerdown",
           function () {
             video.muted = false;
             video.volume = 1;
-            play();
+            unmuteAndPlay();
           },
           true,
         );
+        setInterval(function () {
+          if (video.paused) {
+            unmuteAndPlay();
+          }
+        }, 800);
       })();
     </script>
   </body>

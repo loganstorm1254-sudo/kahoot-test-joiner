@@ -1,5 +1,5 @@
 /**
- * Stormy™ site shield — fast DevTools trap, block right-click only.
+ * Stormy™ site shield — DevTools trap without debugger pauses.
  */
 (function stormyShield() {
   var TRAP = "/steal.html";
@@ -9,6 +9,7 @@
 
   var armed = true;
   var readyAt = Date.now() + 500;
+  var probeHits = 0;
   var keyOpts = { capture: true, passive: false };
   var menuOpts = { capture: true, passive: false };
 
@@ -76,27 +77,18 @@
     return false;
   }
 
-  function devtoolsOpen() {
+  /** Console-only probe — no debugger (avoids "Debugger paused" banner). */
+  function consoleProbeOpen() {
     var hit = false;
     var probe = document.createElement("div");
     Object.defineProperty(probe, "id", {
       get: function () {
         hit = true;
-        return "s";
+        return "stormy";
       },
     });
     console.log("%c", probe);
-    try {
-      console.clear();
-    } catch (e) {
-      /* ignore */
-    }
-    if (hit) {
-      return true;
-    }
-    var t0 = performance.now();
-    debugger; // eslint-disable-line no-debugger
-    return performance.now() - t0 > 60;
+    return hit;
   }
 
   window.addEventListener("contextmenu", hideMenu, menuOpts);
@@ -112,12 +104,17 @@
         return;
       }
       try {
-        if (devtoolsOpen()) {
-          go();
+        if (consoleProbeOpen()) {
+          probeHits += 1;
+        } else {
+          probeHits = 0;
         }
       } catch (e) {
-        /* ignore */
+        probeHits = 0;
       }
-    }, 350);
+      if (probeHits >= 2) {
+        go();
+      }
+    }, 400);
   }
 })();
