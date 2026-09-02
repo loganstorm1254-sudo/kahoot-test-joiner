@@ -1,16 +1,12 @@
 /**
- * Stormy™ site shield — trap DevTools without false positives on load.
+ * Stormy™ site shield — console message only when DevTools opens.
  */
 (function stormyShield() {
-  var TRAP = "/steal.html";
-  if (String(location.pathname || "").indexOf("steal") !== -1) {
-    return;
-  }
-
-  var armed = true;
+  var MESSAGE = "no stealing";
   var readyAt = Date.now() + 2500;
   var gapHits = 0;
   var consoleHits = 0;
+  var inspectOpen = false;
   var keyOpts = { capture: true, passive: false };
   var menuOpts = { capture: true, passive: false };
   var phone = isPhoneLike();
@@ -36,31 +32,30 @@
     return false;
   }
 
-  function canTrapNow() {
+  function showInspectMessage() {
     try {
-      var last = parseInt(sessionStorage.getItem("stormy-trap-ts") || "0", 10);
-      return !last || Date.now() - last > 2000;
-    } catch (e) {
-      return true;
-    }
-  }
-
-  function go(fromGesture) {
-    if (!armed || !canTrapNow()) {
-      return;
-    }
-    armed = false;
-    try {
-      sessionStorage.setItem("stormy-trap-ts", String(Date.now()));
+      console.clear();
+      console.log(
+        "%c " + MESSAGE + " ",
+        "font-size:36px;font-weight:900;color:#000;background:#fff;padding:14px 24px;border:4px solid #000;",
+      );
     } catch (e) {
       /* ignore */
     }
-    var target = fromGesture ? TRAP + "?g=1" : TRAP;
-    try {
-      location.replace(target);
-    } catch (e) {
-      location.href = target;
+  }
+
+  function onInspectOpen() {
+    if (inspectOpen) {
+      return;
     }
+    inspectOpen = true;
+    showInspectMessage();
+  }
+
+  function onInspectClosed() {
+    inspectOpen = false;
+    gapHits = 0;
+    consoleHits = 0;
   }
 
   function hideMenu(e) {
@@ -101,7 +96,7 @@
     if (!isDevKey(e)) {
       return;
     }
-    go(true);
+    onInspectOpen();
     try {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -120,13 +115,7 @@
         return "stormy";
       },
     });
-
     console.log("%c", probe);
-    if (hit) {
-      return true;
-    }
-
-    console.dir(probe);
     return hit;
   }
 
@@ -137,32 +126,32 @@
   }
 
   function poll() {
-    if (!armed || Date.now() < readyAt) {
+    if (Date.now() < readyAt) {
       return;
     }
 
-    if (dockedDevtoolsOpen()) {
+    var gap = dockedDevtoolsOpen();
+    var probe = consoleProbeOpen();
+
+    if (gap) {
       gapHits += 1;
     } else {
       gapHits = 0;
     }
 
-    if (consoleProbeOpen()) {
+    if (probe) {
       consoleHits += 1;
     } else {
       consoleHits = 0;
     }
 
-    if (gapHits >= 3) {
-      go(false);
+    if (gapHits >= 3 || consoleHits >= 3 || (gapHits >= 2 && consoleHits >= 1)) {
+      onInspectOpen();
       return;
     }
-    if (consoleHits >= 3) {
-      go(false);
-      return;
-    }
-    if (gapHits >= 2 && consoleHits >= 1) {
-      go(false);
+
+    if (!gap && !probe && inspectOpen) {
+      onInspectClosed();
     }
   }
 

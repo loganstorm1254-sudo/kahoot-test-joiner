@@ -1,1 +1,1 @@
-export const CLIENT_BUILD = "stormy-2026-v39";
+export const CLIENT_BUILD = "stormy-2026-v40";
