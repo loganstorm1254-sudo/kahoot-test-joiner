@@ -425,25 +425,31 @@ button {
 
 .joiner-page {
   min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 16px;
+  padding: 20px 16px;
   background: linear-gradient(160deg, #1a1033 0%, #2d1b69 50%, #46178f 100%);
 }
 
 .joiner-layout {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  width: min(100%, 1180px);
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr) 160px;
+  align-items: start;
+  gap: 12px;
+  width: min(980px, calc(100vw - 32px));
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .joiner-card {
-  flex: 1 1 720px;
-  width: min(100%, 720px);
-  max-width: 720px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 28px 24px 22px;
   border-radius: 12px;
   background: #ffffff;
@@ -748,31 +754,38 @@ input[type="text"]:focus {
 }
 
 .stormy-ad-side {
-  flex: 0 0 160px;
   width: 160px;
+  max-width: 160px;
   margin: 0;
-  padding: 10px 8px;
+  padding: 8px 4px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
+  box-sizing: border-box;
+  justify-self: center;
 }
 
 .stormy-ad-slot {
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   overflow: hidden;
+  width: 160px;
+  max-width: 160px;
 }
 
 .stormy-ad-slot iframe {
-  max-width: 100%;
+  display: block;
+  max-width: 160px !important;
 }
 
 .stormy-ad-side-tall {
-  min-height: 600px;
+  min-height: 0;
 }
 
 .stormy-ad-side-short {
-  min-height: 300px;
+  min-height: 0;
+  align-self: center;
 }
 
 .stormy-ad-bottom {
@@ -798,13 +811,14 @@ input[type="text"]:focus {
   text-align: center;
 }
 
-@media (max-width: 860px) {
-  .stormy-ad-side {
-    display: none !important;
+@media (max-width: 900px) {
+  .joiner-layout {
+    grid-template-columns: 1fr;
+    width: min(720px, calc(100vw - 32px));
   }
 
-  .joiner-layout {
-    width: min(100%, 720px);
+  .stormy-ad-side {
+    display: none !important;
   }
 }
 
