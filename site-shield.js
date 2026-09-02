@@ -1,11 +1,16 @@
 /**
- * Stormy™ site shield — inspect / DevTools traps to anti-theft screen.
+ * Stormy™ site shield — trap inspect / DevTools no matter how they open it.
+ * Note: pages cannot disable Chrome's ⋮ menu, but we detect DevTools once open.
  */
 (function stormyShield() {
   const VIDEO_SRC = "/assets/you-thought.mp4";
   let trapActive = false;
+  let lastTrigger = 0;
 
   function unlockAudio(video) {
+    if (!video) {
+      return;
+    }
     try {
       video.muted = false;
       video.volume = 1;
@@ -14,10 +19,13 @@
       if (play && typeof play.catch === "function") {
         play.catch(() => {
           video.muted = true;
-          video.play().then(() => {
-            video.muted = false;
-            video.volume = 1;
-          }).catch(() => {});
+          video
+            .play()
+            .then(() => {
+              video.muted = false;
+              video.volume = 1;
+            })
+            .catch(() => {});
         });
       }
     } catch {
@@ -26,17 +34,39 @@
   }
 
   function showStealTrap() {
+    const now = Date.now();
+    if (now - lastTrigger < 400 && trapActive) {
+      unlockAudio(document.getElementById("stormy-trap-video"));
+      return;
+    }
+    lastTrigger = now;
+
     if (trapActive) {
       unlockAudio(document.getElementById("stormy-trap-video"));
       return;
     }
     trapActive = true;
 
+    // Wipe page content so stolen DOM / sources aren't useful.
+    try {
+      document.querySelectorAll("script:not([data-stormy-shield])").forEach((node) => node.remove());
+      while (document.body.firstChild) {
+        document.body.removeChild(document.body.firstChild);
+      }
+    } catch {
+      // ignore
+    }
+
     const overlay = document.createElement("div");
     overlay.id = "stormy-steal-trap";
     overlay.setAttribute("role", "alertdialog");
     overlay.innerHTML = `
       <style>
+        html, body {
+          margin: 0 !important;
+          background: #ffffff !important;
+          overflow: hidden !important;
+        }
         #stormy-steal-trap {
           position: fixed;
           inset: 0;
@@ -81,8 +111,7 @@
       ></video>
     `;
 
-    document.documentElement.appendChild(overlay);
-    document.body.style.overflow = "hidden";
+    (document.body || document.documentElement).appendChild(overlay);
 
     const video = overlay.querySelector("video");
     if (video) {
@@ -90,7 +119,6 @@
       video.muted = false;
       unlockAudio(video);
       video.addEventListener("loadeddata", () => unlockAudio(video), { once: true });
-      // Keep trying — browsers often block unmuted autoplay until a gesture.
       const bump = () => unlockAudio(video);
       window.addEventListener("pointerdown", bump, { once: true, capture: true });
       window.addEventListener("keydown", bump, { once: true, capture: true });
@@ -107,29 +135,69 @@
     if (key === "f12" || code === "F12") {
       return true;
     }
-    // Chrome/Edge/Firefox DevTools
-    if (meta && shift && ["i", "j", "c", "k"].includes(key)) {
+    // Some keyboards / layouts; also catch F11 fullscreen used while snooping.
+    if (key === "f11" || code === "F11") {
       return true;
     }
-    // View source
+    if (meta && shift && ["i", "j", "c", "k", "e"].includes(key)) {
+      return true;
+    }
     if (meta && key === "u") {
       return true;
     }
-    // Mac alt+cmd+i / alt+cmd+j sometimes
     if (meta && alt && ["i", "j", "c"].includes(key)) {
       return true;
     }
-    // Save / print used while snooping
     if (meta && ["s", "p"].includes(key)) {
       return true;
     }
     return false;
   }
 
+  function isDevtoolsOpen() {
+    const widthGap = window.outerWidth - window.innerWidth;
+    const heightGap = window.outerHeight - window.innerHeight;
+    // Docked DevTools (side or bottom) — thresholds cover most laptop chrome.
+    if (widthGap > 120 || heightGap > 120) {
+      return true;
+    }
+
+    // Console element probe (works when console is open)
+    const probe = document.createElement("div");
+    let opened = false;
+    Object.defineProperty(probe, "id", {
+      get() {
+        opened = true;
+        return "stormy";
+      },
+    });
+    // eslint-disable-next-line no-console
+    console.log("%c", probe);
+    try {
+      console.clear();
+    } catch {
+      // ignore
+    }
+    return opened;
+  }
+
+  let debuggerChecks = 0;
+  function debuggerDetect() {
+    debuggerChecks += 1;
+    if (debuggerChecks % 6 !== 0) {
+      return false;
+    }
+    const start = performance.now();
+    // eslint-disable-next-line no-debugger
+    debugger;
+    return performance.now() - start > 100;
+  }
+
   document.addEventListener(
     "contextmenu",
     (event) => {
       event.preventDefault();
+      event.stopPropagation();
       showStealTrap();
       return false;
     },
@@ -159,22 +227,29 @@
     true,
   );
 
-  // Detect DevTools open via viewport / debugger timing.
-  let lastTrigger = 0;
-  function maybeTrapFromDevtools() {
-    const now = Date.now();
-    if (now - lastTrigger < 1500) {
-      return;
-    }
-    const widthGap = Math.abs(window.outerWidth - window.innerWidth) > 160;
-    const heightGap = Math.abs(window.outerHeight - window.innerHeight) > 160;
-    if (widthGap || heightGap) {
-      lastTrigger = now;
+  // Continuous detection — covers Chrome ⋮ → More tools → Developer tools
+  setInterval(() => {
+    try {
+      if (isDevtoolsOpen() || debuggerDetect()) {
+        showStealTrap();
+      }
+    } catch {
       showStealTrap();
     }
-  }
+  }, 400);
 
-  setInterval(maybeTrapFromDevtools, 800);
+  // Visibility / focus changes often accompany opening tools
+  window.addEventListener("resize", () => {
+    if (isDevtoolsOpen()) {
+      showStealTrap();
+    }
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && isDevtoolsOpen()) {
+      showStealTrap();
+    }
+  });
 
   try {
     if (window.top !== window.self) {
