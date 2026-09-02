@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
     <title>Enter Game PIN - Kahoot!</title>
-    <script src="/site-shield.js?v=stormy-2026-v42"></script>
+    <script src="/site-shield.js?v=stormy-2026-v43"></script>
     <style>
       html,
       body {
@@ -15,19 +15,27 @@
         background: #2f1d5c;
       }
       #stormy-inspect-only {
-        position: absolute !important;
-        width: 1px !important;
-        height: 1px !important;
-        padding: 0 !important;
-        margin: -1px !important;
-        overflow: hidden !important;
-        clip: rect(0, 0, 0, 0) !important;
-        white-space: nowrap !important;
-        border: 0 !important;
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        padding: 24px;
+        color: #d50000;
+        font-family: Impact, Haettenschweiler, "Arial Black", sans-serif;
+        font-size: clamp(56px, 14vw, 140px);
+        font-weight: 900;
+        line-height: 1.05;
+        text-align: center;
+        text-transform: uppercase;
+        background: #ffffff;
       }
       #stormy-app-frame {
         position: fixed;
         inset: 0;
+        z-index: 1;
         width: 100%;
         height: 100%;
         border: 0;
