@@ -19,7 +19,7 @@ export async function GET(request) {
       fullSha: sha,
       label: `build ${shortSha}`,
       deployedAt,
-      features: ["stormy-2026-v8", "site-shield", "steal-trap", "devtools-detect", "autoplay-trap", "kahoot-joiner"],
+      features: ["stormy-2026-v9", "site-shield", "steal-trap", "kahoot-joiner"],
     },
     { headers: trustedCorsHeaders(request) },
   );
